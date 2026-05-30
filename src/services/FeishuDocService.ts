@@ -35,22 +35,6 @@ export class FeishuDocService {
         this.artifactUploader = new ArtifactUploader(client, dataDir, FEISHU_WRITE_INTERVAL_MS);
     }
 
-    async createWikiSpace(name: string, description?: string, userAccessToken?: string): Promise<string> {
-        this.log.info('正在创建知识库...', { name });
-        const options = userAccessToken ? Lark.withUserAccessToken(userAccessToken) : undefined;
-        const res = await this.client.wiki.space.create({
-            data: {
-                name,
-                description: description ?? '',
-            },
-        }, options);
-        if (!res.data?.space?.space_id) {
-            throw new Error(`Failed to create wiki space: ${JSON.stringify(res)}`);
-        }
-        this.log.info('知识库创建成功', { spaceId: res.data.space.space_id });
-        return res.data.space.space_id;
-    }
-
     async createDocument(
         title: string,
         contentMarkdown: string,
