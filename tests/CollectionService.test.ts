@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { DatabaseManager } from '../src/data/Database.js';
 import { KnowledgeRepository } from '../src/data/KnowledgeRepository.js';
@@ -118,6 +121,41 @@ describe('CollectionService reprocessing', () => {
         expect(updated.feishuWikiNode).toBe('wiki-token');
         expect(updated.status).toBe('done');
         dbManager.close();
+    });
+
+    it('clears the existing knowledge asset directory before reprocessing', async () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'collector-reprocess-'));
+        const dbManager = new DatabaseManager(':memory:');
+        const db = dbManager.connect();
+        try {
+            const knowledgeRepo = new KnowledgeRepository(db);
+            const tagRepo = new TagRepository(db);
+            const context = makeContext('old-chat', 'original input');
+            const knowledge = new Knowledge(
+                'Old title', 'Old summary', 'Old body', 'test', 'done',
+                null, null, null, null, null, 'text', 'doc-token', 'wiki-token',
+                [], 1, false, '', [], context,
+            );
+            knowledgeRepo.create(knowledge);
+            const staleFile = join(dataDir, knowledge.id, 'artifacts', 'stale.txt');
+            mkdirSync(join(dataDir, knowledge.id, 'artifacts'), { recursive: true });
+            writeFileSync(staleFile, 'stale');
+            const agentRunner = makeAgentRunner('New title');
+            const feishuDoc = {
+                isDocumentDeleted: vi.fn(async () => false),
+                replaceDocumentContent: vi.fn(async () => undefined),
+            };
+            const service = new CollectionService(knowledgeRepo, tagRepo, agentRunner as any, feishuDoc as any, dataDir);
+
+            await service.reprocessKnowledge(knowledge.id, 'new-chat', makeReporter());
+
+            expect(existsSync(staleFile)).toBe(false);
+            expect(existsSync(join(dataDir, knowledge.id))).toBe(false);
+            expect(agentRunner.run).toHaveBeenCalledWith({ ...context, chatId: 'new-chat' }, knowledge.id);
+        } finally {
+            dbManager.close();
+            rmSync(dataDir, { recursive: true, force: true });
+        }
     });
 
     it('creates a new Feishu document during reprocess when the old one is deleted', async () => {

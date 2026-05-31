@@ -69,7 +69,7 @@ export async function runStart(): Promise<void> {
 
     const feishuDoc = new FeishuDocService(config.feishu, config.storage.dataDir);
     const collectionService = new CollectionService(
-        knowledgeRepo, tagRepo, agentRunner, feishuDoc,
+        knowledgeRepo, tagRepo, agentRunner, feishuDoc, config.storage.dataDir,
     );
     let feishuDocumentSyncTimer: ReturnType<typeof setInterval> | null = null;
     const runFeishuDocumentSync = (reason: 'startup' | 'scheduled') => {

@@ -1,3 +1,5 @@
+import { existsSync, rmSync } from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
 import type { KnowledgeRepository } from '../data/KnowledgeRepository.js';
 import type { TagRepository } from '../data/TagRepository.js';
 import type { IngressContext } from '../models/IngressContext.js';
@@ -46,6 +48,7 @@ export class CollectionService {
         private tagRepo: TagRepository,
         private agentRunner: IngestionAgentRunner,
         private feishuDoc: FeishuDocService,
+        private dataDir?: string,
     ) {}
 
     async handleIngress(context: IngressContext, reporter: ProgressReporter): Promise<void> {
@@ -109,6 +112,7 @@ export class CollectionService {
                 knowledge.errorMessage = null;
                 this.knowledgeRepo.update(knowledge);
                 this.log.info('Knowledge 开始重新处理', { knowledgeId: knowledge.id });
+                this.clearJobDirectory(knowledge.id);
             } else {
                 knowledge = Knowledge.createProcessing(context);
                 this.knowledgeRepo.create(knowledge);
@@ -375,4 +379,23 @@ export class CollectionService {
         const cleanPath = path.replace(/^\.\/+/, '');
         return `${knowledge.id}/${cleanPath}`;
     }
+
+    private clearJobDirectory(knowledgeId: string): void {
+        if (!this.dataDir) return;
+
+        const dataRoot = resolve(this.dataDir);
+        const jobRoot = resolve(dataRoot, knowledgeId);
+        if (!isInside(dataRoot, jobRoot)) {
+            throw new Error(`Refusing to clear job directory outside storage data dir: ${jobRoot}`);
+        }
+
+        if (!existsSync(jobRoot)) return;
+        rmSync(jobRoot, { recursive: true, force: true });
+        this.log.debug('Knowledge 重新处理目录已清空', { knowledgeId, path: jobRoot });
+    }
+}
+
+function isInside(root: string, child: string): boolean {
+    const childRelativeToRoot = relative(root, child);
+    return childRelativeToRoot === '' || (!childRelativeToRoot.startsWith('..') && !isAbsolute(childRelativeToRoot));
 }
