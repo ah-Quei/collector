@@ -138,14 +138,23 @@ export class CardProgressReporter implements ProgressReporter {
             content: `---\n**${info.title}**\n\n${info.summary}\n\n⏱️ 耗时 ${elapsed} 秒`,
         });
 
+        const reviewText = buildReviewMarkdown(info);
+        if (reviewText) {
+            elements.push({ tag: 'markdown', content: reviewText });
+        }
+
         const actions = this.buildFinalActions(info);
         if (actions.length > 0) {
             elements.push({ tag: 'action', actions });
         }
 
+        const needsReview = Boolean(info.needsReview || info.qualityNotes?.trim());
         await this.updateCard({
             config: { wide_screen_mode: true },
-            header: { title: { tag: 'plain_text', content: '✅ 处理完成' }, template: 'green' },
+            header: {
+                title: { tag: 'plain_text', content: needsReview ? '⚠️ 处理完成，需复核' : '✅ 处理完成' },
+                template: needsReview ? 'orange' : 'green',
+            },
             elements,
         });
     }
@@ -300,4 +309,18 @@ export class CardProgressReporter implements ProgressReporter {
             this.log.error('飞书卡片更新失败', { error: String(e) });
         }
     }
+}
+
+function buildReviewMarkdown(info: CompleteInfo): string | null {
+    const notes = info.qualityNotes?.trim();
+    if (!info.needsReview && !notes) return null;
+
+    const lines = ['---', '**处理提示：**'];
+    if (info.needsReview) {
+        lines.push('', '该条目需要人工复核。');
+    }
+    if (notes) {
+        lines.push('', notes);
+    }
+    return lines.join('\n');
 }

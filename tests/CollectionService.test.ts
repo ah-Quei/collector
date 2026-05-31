@@ -68,6 +68,32 @@ describe('CollectionService reprocessing', () => {
         dbManager.close();
     });
 
+    it('passes agent review notes to the progress reporter', async () => {
+        const dbManager = new DatabaseManager(':memory:');
+        const db = dbManager.connect();
+        const knowledgeRepo = new KnowledgeRepository(db);
+        const tagRepo = new TagRepository(db);
+        const context = makeContext('chat-1', 'hello');
+        const agentRunner = makeAgentRunnerWithOutput({
+            ...makeAgentOutput('Needs review'),
+            needsReview: true,
+            qualityNotes: 'MODEL_API_KEY is not configured',
+        });
+        const feishuDoc = {
+            createDocument: vi.fn(async () => ({ documentId: 'doc-1', wikiNodeToken: 'wiki-1' })),
+        };
+        const reporter = makeReporter();
+        const service = new CollectionService(knowledgeRepo, tagRepo, agentRunner as any, feishuDoc as any);
+
+        await service.handleIngress(context, reporter);
+
+        expect(reporter.complete).toHaveBeenCalledWith(expect.objectContaining({
+            needsReview: true,
+            qualityNotes: 'MODEL_API_KEY is not configured',
+        }));
+        dbManager.close();
+    });
+
     it('reprocesses from stored ingress context and overwrites the existing Feishu document', async () => {
         const dbManager = new DatabaseManager(':memory:');
         const db = dbManager.connect();

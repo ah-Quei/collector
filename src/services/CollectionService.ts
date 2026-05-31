@@ -162,6 +162,8 @@ export class CollectionService {
                 docUrl: `https://feishu.cn/docx/${docResult.documentId}`,
                 knowledgeId: knowledge.id,
                 reprocessable: true,
+                needsReview: knowledge.needsReview,
+                qualityNotes: knowledge.qualityNotes,
             });
         } catch (error) {
             this.log.error('处理失败', { error: String(error) });

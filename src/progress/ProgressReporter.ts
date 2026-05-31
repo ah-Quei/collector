@@ -10,6 +10,8 @@ export interface CompleteInfo {
     docUrl?: string;
     knowledgeId?: string;
     reprocessable?: boolean;
+    needsReview?: boolean;
+    qualityNotes?: string;
 }
 
 export interface FailInfo {
