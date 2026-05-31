@@ -25,8 +25,8 @@ export function getDefaultDataDir(): string {
     return join(homedir(), '.collector');
 }
 
-export function getBundledSkillsDir(importMetaUrl: string): string {
-    return join(dirname(fileURLToPath(importMetaUrl)), '..', '..', 'skills');
+export function getDefaultSkillsDir(): string {
+    return join(getConfigDir(), 'skills');
 }
 
 export function getEntrypointPath(importMetaUrl: string): string {

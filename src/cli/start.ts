@@ -17,7 +17,7 @@ import { readPid, registerDaemonPid, removePidFile } from './pid.js';
 
 const FEISHU_DOCUMENT_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-export async function runStart(skillsDir: string): Promise<void> {
+export async function runStart(): Promise<void> {
     const config = Config.load();
     const log = new Logger('main');
 
@@ -46,6 +46,7 @@ export async function runStart(skillsDir: string): Promise<void> {
         llmBaseUrl: config.llm.baseUrl,
         mcpEnabled: config.mcp.enabled,
         browserExtEnabled: config.browserExtension.enabled,
+        skillsDir: config.skills.dir,
     });
 
     log.info('正在初始化数据库...');
@@ -57,8 +58,12 @@ export async function runStart(skillsDir: string): Promise<void> {
 
     log.info('正在加载 Agent 和 Skills...');
     const skillLoader = new SkillLoader();
-    if (existsSync(skillsDir)) {
-        skillLoader.loadFromDir(skillsDir);
+    if (existsSync(config.skills.dir)) {
+        skillLoader.loadFromDir(config.skills.dir);
+    } else {
+        log.warn('Skills 目录不存在，请重新运行安装脚本同步模板', {
+            path: config.skills.dir,
+        });
     }
     const agentRunner = new IngestionAgentRunner(config, skillLoader, tagRepo);
 

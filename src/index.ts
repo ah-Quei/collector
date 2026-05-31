@@ -1,4 +1,4 @@
-export { Config, type LLMConfig, type AppConfig } from './config/index.js';
+export { Config, type LLMConfig, type AppConfig, type SkillsConfig } from './config/index.js';
 export { DatabaseManager, KnowledgeRepository, TagRepository } from './data/index.js';
 export { BaseEntity, Knowledge, Tag, Skill, type IngressContext, type RawContent } from './models/index.js';
 export {

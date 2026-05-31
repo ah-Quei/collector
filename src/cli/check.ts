@@ -27,5 +27,9 @@ export async function runCheck(): Promise<void> {
     console.log(`  路径: ${config.database.path}`);
     console.log(`  存在: ${existsSync(config.database.path) ? '是' : '否'}`);
 
+    console.log('\nSkills:');
+    console.log(`  路径: ${config.skills.dir}`);
+    console.log(`  存在: ${existsSync(config.skills.dir) ? '是' : '否'}`);
+
     console.log('\n校验完成');
 }

@@ -1,10 +1,10 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { Config, DEFAULT_LLM_MODEL } from '../config/Config.js';
 import { getBotOpenId } from './auth.js';
 import { confirm, prompt } from './prompt.js';
-import { getConfigPath, getDefaultDataDir } from './paths.js';
+import { getConfigPath, getDefaultDataDir, getDefaultSkillsDir } from './paths.js';
 
 export async function runInit(): Promise<void> {
     printInitBanner();
@@ -48,6 +48,7 @@ export async function runInit(): Promise<void> {
 
     const configPath = getConfigPath();
     const dataDir = getDefaultDataDir();
+    const skillsDir = process.env.COLLECTOR_SKILLS_DIR ?? getDefaultSkillsDir();
 
     mkdirSync(dirname(configPath), { recursive: true });
 
@@ -64,6 +65,7 @@ export async function runInit(): Promise<void> {
         },
         database: { path: join(dataDir, 'data.db') },
         storage: { dataDir: join(dataDir, 'data') },
+        skills: { dir: skillsDir },
         mcp: { enabled: enableMcp, transport: 'http', port: mcpPort },
         browserExtension: { enabled: enableBrowserExt, port: browserExtPort },
     });
@@ -71,7 +73,7 @@ export async function runInit(): Promise<void> {
     config.save(configPath);
 
     console.log(`\n${style.success('✓')} 配置已保存: ${style.path(configPath)}`);
-    printPostInitSummary(configPath);
+    printPostInitSummary(configPath, skillsDir);
     console.log(`\n${style.success('✓ 初始化完成')}\n`);
 }
 
@@ -294,9 +296,13 @@ function getFeishuConsoleLinks(appId: string): {
     };
 }
 
-function printPostInitSummary(configPath: string): void {
+function printPostInitSummary(configPath: string, skillsDir: string): void {
     console.log(`\n${style.step('下一步')}`);
     console.log(`  配置文件: ${style.path(configPath)}`);
+    console.log(`  Skills 目录: ${style.path(skillsDir)}`);
+    if (!existsSync(skillsDir)) {
+        console.log(`  ${style.warn('!')} Skills 目录尚未初始化，请重新运行安装脚本同步模板`);
+    }
     console.log(`  1. ${style.code('collector check')}`);
     console.log(`  2. ${style.code('collector start')}`);
     console.log('  3. 给机器人发送一条消息，确认能收到处理进度卡片');

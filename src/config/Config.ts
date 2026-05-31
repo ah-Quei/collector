@@ -36,6 +36,10 @@ export interface StorageConfig {
     dataDir: string;
 }
 
+export interface SkillsConfig {
+    dir: string;
+}
+
 export interface AgentConfig {
     maxSteps: number;
     maxOutputTokens: number;
@@ -62,6 +66,7 @@ export interface AppConfig {
     opencli: OpenCLIConfig;
     database: DatabaseConfig;
     storage: StorageConfig;
+    skills: SkillsConfig;
     agent: AgentConfig;
     browserExtension: BrowserExtensionConfig;
     mcp: MCPConfig;
@@ -77,6 +82,7 @@ export class Config {
     public readonly opencli: OpenCLIConfig;
     public readonly database: DatabaseConfig;
     public readonly storage: StorageConfig;
+    public readonly skills: SkillsConfig;
     public readonly agent: AgentConfig;
     public readonly browserExtension: BrowserExtensionConfig;
     public readonly mcp: MCPConfig;
@@ -114,6 +120,10 @@ export class Config {
             dataDir: data.storage?.dataDir ?? join(homedir(), '.collector', 'data'),
         };
 
+        this.skills = {
+            dir: data.skills?.dir ?? join(homedir(), '.collector', 'skills'),
+        };
+
         this.agent = {
             maxSteps: data.agent?.maxSteps ?? 12,
             maxOutputTokens: data.agent?.maxOutputTokens ?? 16000,
@@ -140,13 +150,7 @@ export class Config {
      */
     static load(configPath?: string): Config {
         const path = configPath ?? process.env.COLLECTOR_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
-
-        if (!existsSync(path)) {
-            return new Config();
-        }
-
-        const raw = readFileSync(path, 'utf-8');
-        const loaded = yaml.load(raw);
+        const loaded = existsSync(path) ? yaml.load(readFileSync(path, 'utf-8')) : {};
         const data = isRecord(loaded) ? loaded : {};
         const feishu = isRecord(data.feishu) ? data.feishu : {};
         const llm = isRecord(data.llm) ? data.llm : {};
@@ -154,10 +158,12 @@ export class Config {
         const opencli = isRecord(data.opencli) ? data.opencli : {};
         const database = isRecord(data.database) ? data.database : {};
         const storage = isRecord(data.storage) ? data.storage : {};
+        const skills = isRecord(data.skills) ? data.skills : {};
         const agent = isRecord(data.agent) ? data.agent : {};
         const browserExtension = isRecord(data.browser_extension) ? data.browser_extension : {};
         const mcp = isRecord(data.mcp) ? data.mcp : {};
         const logging = isRecord(data.logging) ? data.logging : {};
+        const defaultSkillsDir = join(dirname(path), 'skills');
 
         return new Config({
             feishu: {
@@ -189,6 +195,9 @@ export class Config {
             },
             storage: {
                 dataDir: process.env.COLLECTOR_DATA_DIR ?? stringValue(storage.data_dir, join(homedir(), '.collector', 'data')),
+            },
+            skills: {
+                dir: process.env.COLLECTOR_SKILLS_DIR ?? stringValue(skills.dir, defaultSkillsDir),
             },
             agent: {
                 maxSteps: numberValue(agent.max_steps, 12),
@@ -240,6 +249,7 @@ export class Config {
             opencli: this.opencli,
             database: { path: this.database.path },
             storage: { data_dir: this.storage.dataDir },
+            skills: { dir: this.skills.dir },
             agent: {
                 max_steps: this.agent.maxSteps,
                 max_output_tokens: this.agent.maxOutputTokens,
