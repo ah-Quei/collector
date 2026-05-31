@@ -8,6 +8,7 @@ INSTALL_DIR="${COLLECTOR_INSTALL_DIR:-$HOME/.local/bin}"
 SKILLS_DIR="${COLLECTOR_SKILLS_DIR:-$HOME/.collector/skills}"
 SKILLS_STRATEGY="${COLLECTOR_SKILLS_STRATEGY:-incoming}"
 RELEASE_BASE_URL="${COLLECTOR_RELEASE_BASE_URL:-}"
+INSTALL_EXTERNAL_TOOLS="${COLLECTOR_INSTALL_EXTERNAL_TOOLS:-1}"
 
 log() {
     printf '%s\n' "$*"
@@ -319,6 +320,60 @@ EOF
     log "Skills synced to $SKILLS_DIR (added=$added updated=$updated incoming=$incoming kept=$kept overwritten=$overwritten backed_up=$backed_up)"
 }
 
+should_install_external_tools() {
+    case "$INSTALL_EXTERNAL_TOOLS" in
+        0|false|FALSE|no|NO) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+npm_global_bin_dir() {
+    prefix="$(npm prefix -g 2>/dev/null || true)"
+    if [ -n "$prefix" ]; then
+        printf '%s/bin' "$prefix"
+    fi
+}
+
+ensure_npm_command() {
+    command_name="$1"
+    package_name="$2"
+
+    if command -v "$command_name" >/dev/null 2>&1; then
+        log "$command_name found: $(command -v "$command_name")"
+        return
+    fi
+
+    need_cmd npm
+    log "$command_name not found; installing $package_name with npm..."
+    npm install -g "$package_name"
+
+    if command -v "$command_name" >/dev/null 2>&1; then
+        log "$command_name installed: $(command -v "$command_name")"
+        return
+    fi
+
+    global_bin="$(npm_global_bin_dir)"
+    if [ -n "$global_bin" ] && [ -x "$global_bin/$command_name" ]; then
+        PATH="$global_bin:$PATH"
+        export PATH
+        log "$command_name installed: $global_bin/$command_name"
+        log "Add $global_bin to PATH if your shell cannot find $command_name later."
+        return
+    fi
+
+    fail "$package_name installed, but $command_name was not found on PATH"
+}
+
+ensure_external_tools() {
+    if ! should_install_external_tools; then
+        log "Skipping opencli/lark-cli checks (COLLECTOR_INSTALL_EXTERNAL_TOOLS=$INSTALL_EXTERNAL_TOOLS)"
+        return
+    fi
+
+    ensure_npm_command "opencli" "@jackwener/opencli"
+    ensure_npm_command "lark-cli" "@larksuite/cli"
+}
+
 print_path_hint() {
     case ":$PATH:" in
         *":$INSTALL_DIR:"*) ;;
@@ -355,6 +410,7 @@ main() {
 
     install_collector "$os" "$arch"
     sync_skills
+    ensure_external_tools
     print_path_hint
     log "Done. Next step: collector init"
 }

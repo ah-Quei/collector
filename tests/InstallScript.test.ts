@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = resolve('scripts/install.sh');
 const ORIGINAL_ENV = { ...process.env };
+const INSTALL_TEST_TIMEOUT_MS = 20_000;
 
 describe('install.sh', () => {
     afterEach(() => {
@@ -27,7 +28,7 @@ describe('install.sh', () => {
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
-    });
+    }, INSTALL_TEST_TIMEOUT_MS);
 
     it('keeps local skill edits and writes incoming templates on program update', () => {
         const root = mkdtempSync(join(tmpdir(), 'collector-install-'));
@@ -50,7 +51,48 @@ describe('install.sh', () => {
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
-    });
+    }, INSTALL_TEST_TIMEOUT_MS);
+
+    it('installs missing external CLI tools with npm', () => {
+        const root = mkdtempSync(join(tmpdir(), 'collector-install-'));
+        try {
+            const fixture = makeFixture(root, '1.2.3', 'template v1');
+            const npmOutput = join(root, 'npm-install.txt');
+
+            runInstaller(root, fixture.assetsDir, 'v1.2.3', {
+                fakeNpm: true,
+                installExternalTools: true,
+                npmOutput,
+                path: systemPathPrefix(root),
+            });
+
+            const output = readFileSync(npmOutput, 'utf-8');
+            expect(output).toContain('install -g @jackwener/opencli');
+            expect(output).toContain('install -g @larksuite/cli');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    }, INSTALL_TEST_TIMEOUT_MS);
+
+    it('uses existing external CLI tools without reinstalling them', () => {
+        const root = mkdtempSync(join(tmpdir(), 'collector-install-'));
+        try {
+            const fixture = makeFixture(root, '1.2.3', 'template v1');
+            const npmOutput = join(root, 'npm-install.txt');
+
+            runInstaller(root, fixture.assetsDir, 'v1.2.3', {
+                fakeExternalTools: true,
+                fakeNpm: true,
+                installExternalTools: true,
+                npmOutput,
+                path: systemPathPrefix(root),
+            });
+
+            expect(readFileSync(npmOutput, 'utf-8')).toBe('');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    }, INSTALL_TEST_TIMEOUT_MS);
 });
 
 function makeFixture(root: string, version: string, skillContent: string): { assetsDir: string } {
@@ -87,7 +129,15 @@ ${skillContent}
     return { assetsDir };
 }
 
-function runInstaller(root: string, assetsDir: string, version: string): void {
+interface RunInstallerOptions {
+    fakeExternalTools?: boolean;
+    fakeNpm?: boolean;
+    installExternalTools?: boolean;
+    npmOutput?: string;
+    path?: string;
+}
+
+function runInstaller(root: string, assetsDir: string, version: string, options: RunInstallerOptions = {}): void {
     const fakeBin = join(root, 'fake-bin');
     mkdirSync(fakeBin, { recursive: true });
     const fakeCurl = join(fakeBin, 'curl');
@@ -119,6 +169,32 @@ fi
 `, 'utf-8');
     chmodSync(fakeCurl, 0o755);
 
+    if (options.fakeExternalTools) {
+        writeFakeExecutable(join(fakeBin, 'opencli'), 'opencli 1.0.0');
+        writeFakeExecutable(join(fakeBin, 'lark-cli'), 'lark-cli 1.0.0');
+    }
+
+    if (options.fakeNpm) {
+        const npmOutput = options.npmOutput ?? join(root, 'npm-install.txt');
+        writeFileSync(npmOutput, '', 'utf-8');
+        const fakeNpm = join(fakeBin, 'npm');
+        writeFileSync(fakeNpm, `#!/usr/bin/env bash
+set -euo pipefail
+if [ "$1" = "prefix" ] && [ "$2" = "-g" ]; then
+  dirname "$FAKE_BIN"
+  exit 0
+fi
+echo "$*" >> "$NPM_OUTPUT"
+case " $* " in
+  *" @jackwener/opencli "*) printf '#!/usr/bin/env bash\\necho opencli 1.0.0\\n' > "$FAKE_BIN/opencli"; chmod +x "$FAKE_BIN/opencli" ;;
+esac
+case " $* " in
+  *" @larksuite/cli "*) printf '#!/usr/bin/env bash\\necho lark-cli 1.0.0\\n' > "$FAKE_BIN/lark-cli"; chmod +x "$FAKE_BIN/lark-cli" ;;
+esac
+`, 'utf-8');
+        chmodSync(fakeNpm, 0o755);
+    }
+
     execFileSync('bash', [SCRIPT], {
         cwd: resolve('.'),
         encoding: 'utf-8',
@@ -133,7 +209,29 @@ fi
             COLLECTOR_SKILLS_DIR: join(root, 'skills'),
             COLLECTOR_SKILLS_STRATEGY: 'incoming',
             COLLECTOR_VERSION: version,
-            PATH: `${fakeBin}:${process.env.PATH}`,
+            COLLECTOR_INSTALL_EXTERNAL_TOOLS: options.installExternalTools ? '1' : '0',
+            FAKE_BIN: fakeBin,
+            NPM_OUTPUT: options.npmOutput ?? join(root, 'npm-install.txt'),
+            PATH: `${fakeBin}:${options.path ?? process.env.PATH}`,
         },
     });
+}
+
+function writeFakeExecutable(path: string, output: string): void {
+    writeFileSync(path, `#!/usr/bin/env bash
+echo "${output}"
+`, 'utf-8');
+    chmodSync(path, 0o755);
+}
+
+function systemPathPrefix(root: string): string {
+    return [
+        join(root, 'fake-bin'),
+        '/usr/local/bin',
+        '/opt/homebrew/bin',
+        '/usr/bin',
+        '/bin',
+        '/usr/sbin',
+        '/sbin',
+    ].join(':');
 }
