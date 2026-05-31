@@ -93,6 +93,22 @@ describe('install.sh', () => {
             rmSync(root, { recursive: true, force: true });
         }
     }, INSTALL_TEST_TIMEOUT_MS);
+
+    it('installs app bundle release assets', () => {
+        const root = mkdtempSync(join(tmpdir(), 'collector-install-'));
+        try {
+            const fixture = makeBundleFixture(root, '1.2.3', 'template v1');
+            runInstaller(root, fixture.assetsDir, 'v1.2.3');
+
+            const installed = join(root, 'install', 'collector');
+            const version = execFileSync(installed, ['--version'], { encoding: 'utf-8' }).trim();
+
+            expect(version).toBe('collector 1.2.3');
+            expect(readFileSync(join(root, 'app', 'dist', 'cli.js'), 'utf-8')).toContain('bundle cli');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    }, INSTALL_TEST_TIMEOUT_MS);
 });
 
 function makeFixture(root: string, version: string, skillContent: string): { assetsDir: string } {
@@ -124,6 +140,41 @@ ${skillContent}
 `, 'utf-8');
 
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-linux-x64.tar.gz'), '-C', binaryDir, 'collector']);
+    execFileSync('tar', ['-czf', join(assetsDir, 'collector-skills.tar.gz'), '-C', join(root, `skills-${version}`), 'skills']);
+
+    return { assetsDir };
+}
+
+function makeBundleFixture(root: string, version: string, skillContent: string): { assetsDir: string } {
+    const assetsDir = join(root, `assets-${version}`);
+    const bundleDir = join(root, `bundle-${version}`, 'collector-linux-x64');
+    const skillDir = join(root, `skills-${version}`, 'skills', 'resolve-test');
+    mkdirSync(assetsDir, { recursive: true });
+    mkdirSync(join(bundleDir, 'dist'), { recursive: true });
+    mkdirSync(join(bundleDir, 'node_modules'), { recursive: true });
+    mkdirSync(skillDir, { recursive: true });
+
+    writeFileSync(join(bundleDir, 'collector'), `#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then
+  echo "collector ${version}"
+else
+  echo "Collector bundle test binary"
+fi
+`, 'utf-8');
+    chmodSync(join(bundleDir, 'collector'), 0o755);
+    writeFileSync(join(bundleDir, 'dist', 'cli.js'), '// bundle cli\n', 'utf-8');
+
+    writeFileSync(join(skillDir, 'SKILL.md'), `---
+name: resolve-test
+kind: resolve
+description: Test skill
+entry_conditions: {}
+---
+
+${skillContent}
+`, 'utf-8');
+
+    execFileSync('tar', ['-czf', join(assetsDir, 'collector-linux-x64.tar.gz'), '-C', join(root, `bundle-${version}`), 'collector-linux-x64']);
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-skills.tar.gz'), '-C', join(root, `skills-${version}`), 'skills']);
 
     return { assetsDir };
@@ -202,6 +253,7 @@ esac
             ...process.env,
             ASSET_DIR: assetsDir,
             COLLECTOR_ARCH: 'x64',
+            COLLECTOR_APP_DIR: join(root, 'app'),
             COLLECTOR_INSTALL_DIR: join(root, 'install'),
             COLLECTOR_OS: 'linux',
             COLLECTOR_RELEASE_BASE_URL: 'https://example.test/releases',

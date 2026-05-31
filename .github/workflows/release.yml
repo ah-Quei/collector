@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  package:
+    name: Package ${{ matrix.target }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+            release_os: darwin
+            release_arch: arm64
+          - target: darwin-x64
+            runner: macos-15-intel
+            release_os: darwin
+            release_arch: x64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            release_os: linux
+            release_arch: arm64
+          - target: linux-x64
+            runner: ubuntu-24.04
+            release_os: linux
+            release_arch: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: scripts/package-release.sh
+        env:
+          COLLECTOR_PACKAGE_SKILLS: '0'
+          COLLECTOR_RELEASE_OS: ${{ matrix.release_os }}
+          COLLECTOR_RELEASE_ARCH: ${{ matrix.release_arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collector-${{ matrix.target }}
+          path: release/collector-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - run: tar -czf release-assets/collector-skills.tar.gz skills
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" release-assets/*.tar.gz --clobber
+          else
+            gh release create "$TAG_NAME" release-assets/*.tar.gz --title "$TAG_NAME" --generate-notes
+          fi

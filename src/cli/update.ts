@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { basename, dirname } from 'node:path';
 
-const DEFAULT_REPO = 'rkkks/collector';
+const DEFAULT_REPO = 'ah-Quei/collector';
 
 interface UpdateArgs {
     version?: string;

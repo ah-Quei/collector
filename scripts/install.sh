@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEFAULT_REPO="rkkks/collector"
+DEFAULT_REPO="ah-Quei/collector"
 REPO="${COLLECTOR_REPO:-$DEFAULT_REPO}"
 VERSION="${COLLECTOR_VERSION:-latest}"
 INSTALL_DIR="${COLLECTOR_INSTALL_DIR:-$HOME/.local/bin}"
+APP_DIR="${COLLECTOR_APP_DIR:-$HOME/.local/lib/collector}"
 SKILLS_DIR="${COLLECTOR_SKILLS_DIR:-$HOME/.collector/skills}"
 SKILLS_STRATEGY="${COLLECTOR_SKILLS_STRATEGY:-incoming}"
 RELEASE_BASE_URL="${COLLECTOR_RELEASE_BASE_URL:-}"
@@ -180,6 +181,89 @@ find_collector_binary() {
     fail "release archive does not contain a collector binary"
 }
 
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+is_app_bundle() {
+    root="$1"
+    [ -f "$root/collector" ] && [ -d "$root/dist" ] && [ -d "$root/node_modules" ]
+}
+
+write_bundle_wrapper() {
+    destination="$1"
+    app_dir="$2"
+    quoted_app_dir="$(shell_quote "$app_dir")"
+
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'COLLECTOR_APP_DIR=%s\n' "$quoted_app_dir"
+        printf 'exec "$COLLECTOR_APP_DIR/collector" "$@"\n'
+    } > "$destination"
+    chmod +x "$destination"
+}
+
+rollback_bundle_install() {
+    binary_path="$1"
+    backup_path="$2"
+    app_dir="$3"
+    backup_app_dir="$4"
+
+    rm -rf "$app_dir"
+    if [ -e "$backup_app_dir" ]; then
+        mv "$backup_app_dir" "$app_dir"
+    fi
+
+    rm -f "$binary_path"
+    if [ -e "$backup_path" ]; then
+        mv "$backup_path" "$binary_path"
+    fi
+}
+
+install_app_bundle() {
+    release_root="$1"
+    binary_path="$2"
+    target_version="$3"
+
+    need_cmd node
+
+    backup_path="$binary_path.bak"
+    backup_app_dir="$APP_DIR.bak"
+    tmp_app_dir="$APP_DIR.tmp"
+    tmp_wrapper="$TMPDIR/collector-wrapper"
+
+    rm -rf "$tmp_app_dir" "$backup_app_dir"
+    mkdir -p "$(dirname "$APP_DIR")" "$INSTALL_DIR"
+    cp -R "$release_root" "$tmp_app_dir"
+    chmod +x "$tmp_app_dir/collector"
+
+    if [ -e "$binary_path" ]; then
+        cp "$binary_path" "$backup_path"
+    fi
+    if [ -e "$APP_DIR" ]; then
+        mv "$APP_DIR" "$backup_app_dir"
+    fi
+
+    mv "$tmp_app_dir" "$APP_DIR"
+    write_bundle_wrapper "$tmp_wrapper" "$APP_DIR"
+    install -m 0755 "$tmp_wrapper" "$binary_path"
+
+    if ! "$binary_path" --version >/dev/null 2>&1; then
+        rollback_bundle_install "$binary_path" "$backup_path" "$APP_DIR" "$backup_app_dir"
+        fail "installed collector bundle failed to run; previous installation restored"
+    fi
+
+    verified_version="$(current_collector_version "$binary_path" || true)"
+    if [ -n "$verified_version" ] && [ "$(normalize_version "$verified_version")" != "$target_version" ]; then
+        rollback_bundle_install "$binary_path" "$backup_path" "$APP_DIR" "$backup_app_dir"
+        fail "installed collector version $verified_version does not match requested $RESOLVED_VERSION"
+    fi
+
+    rm -rf "$backup_app_dir"
+    log "Installed collector $RESOLVED_VERSION to $binary_path"
+    log "Collector app bundle installed to $APP_DIR"
+}
+
 install_collector() {
     os="$1"
     arch="$2"
@@ -203,6 +287,13 @@ install_collector() {
 
     new_binary="$(find_collector_binary "$extract_dir")"
     chmod +x "$new_binary"
+    release_root="$(dirname "$new_binary")"
+
+    if is_app_bundle "$release_root"; then
+        install_app_bundle "$release_root" "$binary_path" "$target_version"
+        return
+    fi
+
     mkdir -p "$INSTALL_DIR"
 
     backup_path="$binary_path.bak"
