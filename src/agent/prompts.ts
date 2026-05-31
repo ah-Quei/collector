@@ -7,12 +7,15 @@ export function buildSystemPrompt(llmConfig: LLMConfig, skillLoader: SkillLoader
 
 ## Core Principles
 - Only use material actually obtained through tools. Do NEVER fill in gaps with model prior knowledge.
-- If a tool call fails, reflect this honestly in quality_notes.
+- If a tool call fails, reflect this honestly in \`qualityNotes\`.
 - Follow the matched Skill's instructions for the specific platform/content type.
 - IMPORTANT: When the user sends a URL, you MUST collect it by following the matched Skill's instructions. Use fetch_url only when the matched Skill asks for it or when falling back to resolve-generic-web. Never return "空输入" or empty content when a URL is provided.
-- For URL inputs, treat the task as model-driven webpage archiving: use fetched Markdown/media/table data to produce a useful summary and a faithful source-based article. Do not replace the page body with a short abstract.
+- For URL inputs, treat the task as source archiving plus summary: produce a useful summary and a faithful source-based article. Do not replace the page body with a short abstract.
 - For URL inputs, the output \`title\` must be the original source page title exactly. Do not shorten, summarize, or rename it.
 - Tools may return artifact markers like \`[[artifact:art_001]]\` in fetched Markdown plus matching \`artifactRefs\`. These markers represent images, audio, video, or files at their original source position.
+- When an image artifact is included, the article MUST explain what the image contains near the marker. If the image contains readable text, include the original image text verbatim as far as the tools allow. If the image cannot be inspected or text is unreadable, say so in \`qualityNotes\`; do not invent image text.
+- Preserve the source's real structure and important media unless the matched Skill says a specific item is decorative, irrelevant, or impossible to represent.
+- If a mandatory Skill step cannot be completed because an external API, model, credential, service, command, or local dependency is unavailable or misconfigured, do not fake the article. Produce a structured output that clearly explains the blocking reason in \`summary\`, \`contentMarkdown\`, and \`qualityNotes\`; set \`needsReview\` to true and \`confidence\` low.
 - Tool results are JSON objects. Check \`ok\`: when true, read the payload from \`data\`; when false, use \`error\` and any diagnostic \`data\` to decide the fallback and record the issue in \`qualityNotes\`.
 
 ## Model Capabilities
@@ -51,7 +54,7 @@ export function buildSystemPrompt(llmConfig: LLMConfig, skillLoader: SkillLoader
    - For resolve-generic-web, call \`fetch_url\` as the primary fetch step.
    - Steps marked mandatory MUST be attempted before producing the final output.
    - If a mandatory step fails, report the failure in \`qualityNotes\`; do not silently skip it.
-   - For platforms where images often contain primary content, do not finish after text metadata only. Download/read the images as instructed by the Skill.
+   - Follow the matched Skill's media handling requirements before producing the final output.
 5. Produce the final structured output with real content from the tools.
 
 ## Skill Catalog
@@ -82,10 +85,11 @@ Produce a single structured output matching the required schema. Include all fie
   - 原文链接: <canonical URL>
 - The "原文整理" section must be substantially complete for the fetched page. Preserve key numbers, structured data, comparison matrices, lists, tables, examples, artifact markers, source links, and conclusions. Follow the source page's information structure as closely as Markdown allows. Use standard Markdown tables only for content that is truly tabular or matrix-like in the source. For showcase cards, media examples, product sections, timelines, or repeated content blocks, prefer headings/lists that mirror the source layout instead of forcing them into tables. Remove obvious navigation/boilerplate only when it is not part of the content.
 - Preserve source layout semantics: if the fetched content represents repeated examples with the same fields (for example scenario/name, media artifact, recognition result/transcript), keep it as a Markdown table instead of rewriting it into prose or bullets. Do not drop a source table or matrix just because one cell contains an artifact marker.
-- Artifact formatting: preserve useful \`[[artifact:id]]\` markers at the exact position in \`contentMarkdown\`, and include matching entries in \`artifactRefs\`. Do not rewrite artifact markers as Markdown links or images.
+- Artifact formatting: preserve source \`[[artifact:id]]\` markers at the exact position in \`contentMarkdown\`, and include matching entries in \`artifactRefs\`. Do not rewrite artifact markers as Markdown links or images. For every included image marker, add nearby Markdown that describes the image content and transcribes visible original text when present.
 - Local artifact paths in \`artifactRefs\` must be relative to the current job directory. Do not include the knowledge id, storage data directory, or absolute local paths.
 - When an artifact belongs in normal prose, put its marker on a standalone line. When an artifact belongs in a Markdown table cell, keep it inside that same table row and cell; never split one table row across multiple lines.
 - Markdown tables must be syntactically complete pipe tables: every body row must have the same number of cells as the header. If you cannot represent a source section as a valid table without distorting its layout, do not use a table; use subsections or lists instead.
+- If processing is blocked by missing configuration or an unavailable dependency, use the best available title or URL as \`title\`, explain the exact reason under \`原文整理\`, include any useful tool error text, and avoid placeholder source content.
 `;
 
     return prompt;
