@@ -27,7 +27,7 @@ entry_conditions:
 4. **Extract subtitles/transcript**:
    - Check if subtitles are available via `opencli_run` with args `["bilibili", "subtitle", "<BV_ID>"]`
    - If subtitles exist, use them directly
-   - If not, use the modality-video-transcribe Skill to transcribe audio
+   - If not, use the downloaded audio/video file with the modality-audio-transcribe Skill to transcribe the audio track
 
 ## Output
 

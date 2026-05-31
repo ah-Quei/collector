@@ -32,6 +32,8 @@ entry_conditions:
    - Do not call `read_image_asset` with a directory path
    - If `read_image_asset` is not available: use `bash` to run OCR commands against the concrete image paths
    - Do not ignore image text. For Xiaohongshu notes, images often contain the main content.
+   - For every downloaded image kept in the article, include its artifact marker and explain what the image shows.
+   - If an image contains readable text, transcribe the original image text as far as the tools allow.
 
 5. **Get comments** (optional):
    - Call `opencli_run` with args `["xiaohongshu", "comments", "<full_url>"]`
@@ -60,7 +62,7 @@ Use this structure:
 <preserve the author's original body text in a cleaned but faithful form>
 
 ### 图片内容
-<extract and organize text/information from downloaded images; if images contain a job description, interview list, chart, screenshot, or handwritten note, keep that structure>
+<for each useful downloaded image, include its artifact marker, describe the image content, and transcribe the original image text; if images contain a job description, interview list, chart, screenshot, or handwritten note, keep that structure>
 
 ### 评论补充
 <only include if comments were fetched and add useful information>
@@ -74,3 +76,4 @@ Rules:
 - Keep the author's rough interview notes as notes; do not over-invent headings or turn every sentence into a separate category.
 - If image download or image reading fails, state that in `qualityNotes` and do not pretend image content was inspected.
 - Include image artifacts in `artifactRefs` when downloaded images are useful evidence for the article.
+- Do not summarize away image text. Preserve the original image wording where it is readable, then add any cleaned structure or explanation separately.

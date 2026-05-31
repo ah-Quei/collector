@@ -12,8 +12,9 @@ This Skill handles image inputs when the model does NOT have vision capability.
 
 ## Steps
 
-1. **Load the image**:
-   - Call `read_image_asset` to get the image data
+1. **Locate the image file**:
+   - Use the image path from the input, `opencli_run` output, or `list_asset_directory`
+   - Use a concrete image file path, not a directory path
 
 2. **Run OCR**:
    - Use `bash` to run an OCR command:
@@ -25,6 +26,7 @@ This Skill handles image inputs when the model does NOT have vision capability.
 3. **Process extracted text**:
    - Clean up the OCR output
    - Structure the extracted information
+   - When the final article includes the image, describe what the image shows and preserve the original extracted text as far as the OCR result allows
 
 ## Notes
 

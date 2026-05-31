@@ -24,10 +24,12 @@ Use this Skill for WeChat Official Account article URLs from `mp.weixin.qq.com`.
    - Call `read_text_asset` with the exact job-relative Markdown path.
    - Use the downloaded Markdown as the source of truth for title, author, publish time, body, links, and image references.
 
-3. **Inspect images when they carry content**:
-   - If the downloaded article has images that contain charts, screenshots, tables, formulas, diagrams, or text-heavy content, call `read_image_asset` with each concrete job-relative image path.
+3. **Inspect images and preserve their meaning**:
+   - If the downloaded article has images in the body, call `read_image_asset` with each concrete job-relative image path unless the image is clearly decorative before inspection, such as an account avatar, divider, QR code, or ornament.
    - Do not call `read_image_asset` with a directory path.
-   - Decorative account headers, QR codes, and purely ornamental images can be omitted from the final article.
+   - For every included image, keep an artifact marker near its original position and add nearby Markdown that explains what the image shows.
+   - If an image contains readable text, tables, formulas, screenshots, diagrams, or chart labels, transcribe the original image text as far as the tools allow.
+   - Decorative account headers, QR codes, and purely ornamental images can be omitted from the final article; mention omitted useful-but-unreadable images in `qualityNotes`.
 
 4. **Handle failure explicitly**:
    - If `opencli_run` fails, state the failure in `qualityNotes`.
@@ -63,5 +65,6 @@ Use this structure:
 Rules:
 - Preserve the article's real structure. Do not collapse a long article into a short abstract.
 - Keep important numbered lists, equations, tables, citations, and technical terminology intact.
-- Include useful downloaded images as `artifactRefs` and keep their markers where the evidence belongs.
+- Include useful downloaded images as `artifactRefs`, keep their markers where the evidence belongs, and explain each included image's content.
+- Include original image text when an included image contains readable text.
 - If a downloaded image is referenced by the article but not useful for understanding the content, it does not need to be included.

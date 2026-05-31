@@ -66,6 +66,45 @@ collector init
 collector check
 ```
 
+## PDF 解析 Skill（MinerU）
+
+默认 Skills 中包含 `modality-pdf-parse`，用于把 PDF 解析成 Markdown。该 Skill 使用 MinerU，并支持两种远程视觉模型后端：
+
+- `hybrid-http-client`：默认选项，解析质量更稳，但本机会运行一部分 pipeline 组件，建议 16GB 内存以上。
+- `vlm-http-client`：更适合弱性能机器，本机负担更低，更多依赖在线视觉模型能力。
+
+安装 MinerU：
+
+```bash
+# 默认 hybrid-http-client
+python3 -m pip install -U "mineru[pipeline]"
+
+# 如果只使用 vlm-http-client，可安装轻量版本
+python3 -m pip install -U mineru
+```
+
+配置远程 OpenAI-compatible 视觉模型：
+
+```bash
+export MINERU_VL_BASE_URL="https://api.openai.com/v1"
+export MINERU_VL_API_KEY="<api-key>"
+export MINERU_VL_MODEL_NAME="<vision-model-id>"
+```
+
+如果要在弱机器上优先使用远程 VLM：
+
+```bash
+export COLLECTOR_PDF_MINERU_BACKEND="vlm-http-client"
+```
+
+如果使用默认 `hybrid-http-client` 且希望降低本地批量压力：
+
+```bash
+export MINERU_HYBRID_BATCH_RATIO="1"
+```
+
+这些环境变量需要配置在启动 Collector 的同一个运行环境中。缺少 `MINERU_VL_BASE_URL`、`MINERU_VL_API_KEY` 或 `MINERU_VL_MODEL_NAME` 时，PDF Skill 会停止解析并在输出中说明需要如何配置。
+
 ## 运行
 
 前台运行：
@@ -119,6 +158,11 @@ curl -fsSL https://raw.githubusercontent.com/ah-Quei/collector/main/scripts/inst
 | `COLLECTOR_SKILLS_DIR` | Skills 目录 |
 | `COLLECTOR_SKILLS_STRATEGY` | Skill 冲突策略：`incoming`、`keep`、`overwrite`、`backup` |
 | `COLLECTOR_INSTALL_EXTERNAL_TOOLS` | 设为 `0` 可跳过 `opencli` / `lark-cli` 检查 |
+| `MINERU_VL_BASE_URL` | PDF 解析 Skill 使用的 OpenAI-compatible 视觉模型 API 地址 |
+| `MINERU_VL_API_KEY` | PDF 解析 Skill 使用的视觉模型 API Key |
+| `MINERU_VL_MODEL_NAME` | PDF 解析 Skill 使用的视觉模型 ID |
+| `COLLECTOR_PDF_MINERU_BACKEND` | PDF 解析后端：`hybrid-http-client` 或 `vlm-http-client`，默认 `hybrid-http-client` |
+| `MINERU_HYBRID_BATCH_RATIO` | 可选，降低 `hybrid-http-client` 本地 pipeline 批量压力 |
 
 ## 开发
 
