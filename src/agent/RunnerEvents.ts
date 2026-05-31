@@ -13,6 +13,7 @@ export interface AgentToolLike {
 export interface AgentToolDetails {
     toolCall?: {
         callId?: string;
+        arguments?: string;
     };
 }
 

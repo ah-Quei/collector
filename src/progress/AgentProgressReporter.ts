@@ -28,16 +28,20 @@ export class AgentProgressReporter {
             const callId = details.toolCall?.callId;
             if (!callId) return;
             const toolName = tool.name ?? 'tool';
-            this.log.debug('Tool started', { callId, tool: toolName });
+            this.log.debug('Tool started', {
+                callId,
+                tool: toolName,
+                arguments: formatToolArguments(details.toolCall?.arguments),
+            });
             const subStepIndex = await this.reporter.addSubStep(this.AI_STEP_INDEX, `调用 ${toolName}...`);
             this.subStepMap.set(callId, subStepIndex);
             await this.reporter.startSubStep(this.AI_STEP_INDEX, subStepIndex);
         };
 
-        const onAgentToolEnd = async (_ctx: unknown, _agent: unknown, _tool: unknown, _result: unknown, details: AgentToolDetails) => {
+        const onAgentToolEnd = async (_ctx: unknown, _agent: unknown, _tool: unknown, result: unknown, details: AgentToolDetails) => {
             const callId = details.toolCall?.callId;
             if (!callId) return;
-            this.log.debug('Tool ended', { callId });
+            this.log.debug('Tool ended', { callId, result: formatToolResult(result) });
             const subStepIndex = this.subStepMap.get(callId);
             if (subStepIndex !== undefined) {
                 await this.reporter.completeSubStep(this.AI_STEP_INDEX, subStepIndex);
@@ -66,4 +70,22 @@ export class AgentProgressReporter {
 function removeRunnerListener(runner: RunnerEventSource, event: string, handler: RunnerEventHandler): void {
     if (runner.off) runner.off(event, handler);
     else runner.removeListener?.(event, handler);
+}
+
+function formatToolArguments(args: string | undefined): unknown {
+    if (args === undefined) return undefined;
+    return parseJsonOrOriginal(args);
+}
+
+function formatToolResult(result: unknown): unknown {
+    if (typeof result !== 'string') return result;
+    return parseJsonOrOriginal(result);
+}
+
+function parseJsonOrOriginal(value: string): unknown {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return value;
+    }
 }

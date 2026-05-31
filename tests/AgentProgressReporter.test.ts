@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '../src/logging/Logger.js';
 import { AgentProgressReporter } from '../src/progress/AgentProgressReporter.js';
 import type { ProgressReporter } from '../src/progress/ProgressReporter.js';
 
 describe('AgentProgressReporter', () => {
+    afterEach(() => {
+        Logger.setLevel('info');
+        vi.restoreAllMocks();
+    });
+
     it('detaches runner hooks after a run', async () => {
         const runner = new FakeRunner();
         const reporter = makeReporter();
@@ -23,6 +29,47 @@ describe('AgentProgressReporter', () => {
 
         expect(reporter.addSubStep).toHaveBeenCalledTimes(1);
         expect(reporter.completeSubStep).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs tool arguments at debug level', async () => {
+        Logger.setLevel('debug');
+        const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        const runner = new FakeRunner();
+        const reporter = makeReporter();
+        const progress = new AgentProgressReporter(reporter);
+
+        progress.attachToRunner(runner);
+
+        await runner.emit('agent_tool_start', {}, {}, { name: 'fetch_url' }, {
+            toolCall: {
+                callId: 'call-1',
+                arguments: JSON.stringify({ url: 'https://example.com', depth: 1 }),
+            },
+        });
+
+        const output = stdout.mock.calls.map(([chunk]) => String(chunk)).join('');
+        expect(output).toContain('"tool":"fetch_url"');
+        expect(output).toContain('"arguments":{"url":"https://example.com","depth":1}');
+    });
+
+    it('logs tool results at debug level', async () => {
+        Logger.setLevel('debug');
+        const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        const runner = new FakeRunner();
+        const reporter = makeReporter();
+        const progress = new AgentProgressReporter(reporter);
+
+        progress.attachToRunner(runner);
+
+        await runner.emit('agent_tool_start', {}, {}, { name: 'fetch_url' }, { toolCall: { callId: 'call-1' } });
+        await runner.emit('agent_tool_end', {}, {}, { name: 'fetch_url' }, JSON.stringify({
+            ok: true,
+            data: { title: 'Example' },
+        }), { toolCall: { callId: 'call-1' } });
+
+        const output = stdout.mock.calls.map(([chunk]) => String(chunk)).join('');
+        expect(output).toContain('"callId":"call-1"');
+        expect(output).toContain('"result":{"ok":true,"data":{"title":"Example"}}');
     });
 });
 
