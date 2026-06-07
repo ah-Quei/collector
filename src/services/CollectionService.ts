@@ -1,8 +1,8 @@
-import { existsSync, rmSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, join, isAbsolute, relative, resolve } from 'node:path';
 import type { KnowledgeRepository } from '../data/KnowledgeRepository.js';
 import type { TagRepository } from '../data/TagRepository.js';
-import type { IngressContext } from '../models/IngressContext.js';
+import type { IngressContext, RawContent } from '../models/IngressContext.js';
 import { Knowledge } from '../models/Knowledge.js';
 import type { AgentOutput } from '../agent/schemas.js';
 import type { IngestionAgentRunner } from '../agent/IngestionAgentRunner.js';
@@ -102,11 +102,14 @@ export class CollectionService {
 
         let knowledge: Knowledge | undefined;
         let activeKnowledgeId: string | null = null;
+        let storedContext: IngressContext = stripInMemoryData(context);
 
         try {
             // Step 0: Parse input
             await reporter.startStep(0);
+            let agentContext = context;
             if (existing) {
+                storedContext = existing.ingressContext ?? storedContext;
                 knowledge = existing;
                 knowledge.status = 'processing';
                 knowledge.errorMessage = null;
@@ -115,11 +118,16 @@ export class CollectionService {
                 this.clearJobDirectory(knowledge.id);
             } else {
                 knowledge = Knowledge.createProcessing(context);
+                knowledge.ingressContext = storedContext;
                 this.knowledgeRepo.create(knowledge);
                 this.log.info(`Knowledge 已创建`, { knowledgeId: knowledge.id });
             }
             activeKnowledgeId = knowledge.id;
             this.activeProcessing.add(activeKnowledgeId);
+            agentContext = this.materializeIngressAssets(context, knowledge.id);
+            if (!existing) {
+                storedContext = stripInMemoryData(agentContext);
+            }
             await reporter.completeStep(0);
 
             // Step 1: Run agent
@@ -129,7 +137,7 @@ export class CollectionService {
             agentReporter.attachToRunner(this.agentRunner);
             let result: AgentOutput;
             try {
-                result = await this.agentRunner.run(context, knowledge.id);
+                result = await this.agentRunner.run(agentContext, knowledge.id);
             } finally {
                 agentReporter.detach();
             }
@@ -139,7 +147,7 @@ export class CollectionService {
             // Step 2: Save results
             await reporter.startStep(2);
             this.applyResult(knowledge, result);
-            knowledge.ingressContext = existing?.ingressContext ?? context;
+            knowledge.ingressContext = storedContext;
             this.knowledgeRepo.update(knowledge);
             this.processTags(knowledge, result);
             this.log.info('结果已保存', { knowledgeId: knowledge.id, tags: knowledge.tags });
@@ -334,6 +342,27 @@ export class CollectionService {
         this.knowledgeRepo.update(knowledge);
     }
 
+    private materializeIngressAssets(context: IngressContext, knowledgeId: string): IngressContext {
+        if (!this.dataDir) return stripInMemoryData(context);
+
+        const contents = context.contents.map((content, index) => {
+            if (!content.data) return content;
+
+            const relativePath = join('inputs', safeFileName(content.fileName, fallbackFileName(content, index)));
+            const absolutePath = join(this.dataDir!, knowledgeId, relativePath);
+            mkdirSync(join(this.dataDir!, knowledgeId, 'inputs'), { recursive: true });
+            writeFileSync(absolutePath, content.data);
+
+            return stripInMemoryDataFromContent({
+                ...content,
+                storageUri: relativePath,
+                size: content.data.byteLength,
+            });
+        });
+
+        return { ...context, contents };
+    }
+
     private async publishToFeishu(knowledge: Knowledge, preferExistingDocument: boolean): Promise<{ documentId: string; wikiNodeToken?: string }> {
         const attachments = this.attachmentsForPublish(knowledge);
 
@@ -392,9 +421,33 @@ export class CollectionService {
         }
 
         if (!existsSync(jobRoot)) return;
-        rmSync(jobRoot, { recursive: true, force: true });
+        for (const name of readdirSync(jobRoot)) {
+            if (name === 'inputs') continue;
+            rmSync(resolve(jobRoot, name), { recursive: true, force: true });
+        }
         this.log.debug('Knowledge 重新处理目录已清空', { knowledgeId, path: jobRoot });
     }
+}
+
+function stripInMemoryData(context: IngressContext): IngressContext {
+    return {
+        ...context,
+        contents: context.contents.map(stripInMemoryDataFromContent),
+    };
+}
+
+function stripInMemoryDataFromContent(content: RawContent): RawContent {
+    const { data: _data, ...rest } = content;
+    return rest;
+}
+
+function fallbackFileName(content: RawContent, index: number): string {
+    return `${content.type}-${index + 1}`;
+}
+
+function safeFileName(fileName: string | undefined, fallback: string): string {
+    const candidate = basename(fileName?.trim() || fallback).replace(/[\\/:*?"<>|]/g, '_');
+    return candidate.length > 0 ? candidate : fallback;
 }
 
 function isInside(root: string, child: string): boolean {

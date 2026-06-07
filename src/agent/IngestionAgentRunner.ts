@@ -100,7 +100,9 @@ export class IngestionAgentRunner {
             } else if (content.type === 'video') {
                 parts.push(`[Video: ${content.storageUri ?? 'unknown'} (${content.mimeType ?? 'unknown'})]`);
             } else if (content.type === 'file') {
-                parts.push(`[File: ${content.storageUri ?? 'unknown'} (${content.mimeType ?? 'unknown'})]`);
+                const name = content.fileName ? ` name="${content.fileName}"` : '';
+                const error = content.downloadError ? ` download_error="${content.downloadError}"` : '';
+                parts.push(`[File: ${content.storageUri ?? 'unknown'} (${content.mimeType ?? 'unknown'})${name}${error}]`);
             }
         }
 

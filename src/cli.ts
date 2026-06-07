@@ -2,10 +2,12 @@
 
 import { createRequire } from 'node:module';
 import { runCheck } from './cli/check.js';
-import { runStartDaemon, runStop } from './cli/daemon.js';
+import { runStartDaemon, runStatus, runStop } from './cli/daemon.js';
 import { runInit } from './cli/init.js';
 import { getEntrypointPath } from './cli/paths.js';
+import { runSkillDeps } from './cli/skillDeps.js';
 import { runStart } from './cli/start.js';
+import { runUninstall } from './cli/uninstall.js';
 import { runUpdate } from './cli/update.js';
 
 const command = process.argv[2];
@@ -31,12 +33,26 @@ switch (command) {
     case 'stop':
         await runStop();
         process.exit(0);
+    case 'status':
+        runStatus();
+        process.exit(0);
     case 'check':
         await runCheck();
+        process.exit(0);
+    case 'skills':
+        await runSkillDeps(args);
         process.exit(0);
     case 'update':
         try {
             await runUpdate(args);
+            process.exit(0);
+        } catch (error) {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+        }
+    case 'uninstall':
+        try {
+            await runUninstall(args);
             process.exit(0);
         } catch (error) {
             console.error(error instanceof Error ? error.message : String(error));
@@ -52,8 +68,12 @@ Collector 2.0 - 个人知识收集系统
   collector start -d
                    后台启动服务，日志写入配置目录
   collector stop    停止后台服务
+  collector status  查看后台服务状态
   collector check   校验配置
+  collector skills  管理 Skills
   collector update  更新 Collector 程序和默认 Skills 模板
+  collector uninstall
+                  卸载 Collector 程序
   collector --version
                    输出版本号
 `);

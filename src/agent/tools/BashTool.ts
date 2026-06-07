@@ -15,7 +15,7 @@ interface BashResult {
     truncated: boolean;
 }
 
-export function bashTool(dataDir?: string) {
+export function bashTool(dataDir?: string, extraEnv: NodeJS.ProcessEnv = {}) {
     return tool({
         name: 'bash',
         description: 'Execute a shell command. Used to run commands defined in Skills for processing multimedia content (image OCR, audio transcription, etc.).',
@@ -32,7 +32,7 @@ export function bashTool(dataDir?: string) {
                 execFile(
                     '/bin/sh',
                     ['-c', command],
-                    { cwd: defaultCwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: 'utf8', env: { ...process.env } },
+                    { cwd: defaultCwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: 'utf8', env: { ...process.env, ...extraEnv } },
                     (error: ExecFileException | null, stdout: string, stderr: string) => {
                         const stdoutResult = truncateText(stdout, MAX_OUTPUT_BYTES);
                         const stderrResult = truncateText(stderr, MAX_OUTPUT_BYTES);

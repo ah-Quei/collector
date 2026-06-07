@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { Config, DEFAULT_LLM_MODEL } from '../config/Config.js';
 import { getBotOpenId } from './auth.js';
 import { confirm, prompt } from './prompt.js';
 import { getConfigPath, getDefaultDataDir, getDefaultSkillsDir } from './paths.js';
+import { findInstallScript, listSkillManifests, type SkillEnvVar, type SkillManifest } from './skillManifest.js';
 
 export async function runInit(): Promise<void> {
     printInitBanner();
@@ -47,8 +48,10 @@ export async function runInit(): Promise<void> {
     const browserExtPort = enableBrowserExt ? Number(await prompt('浏览器扩展端口', '3001')) : 3001;
 
     const configPath = getConfigPath();
+    const existingConfig = Config.load(configPath);
     const dataDir = getDefaultDataDir();
     const skillsDir = process.env.COLLECTOR_SKILLS_DIR ?? getDefaultSkillsDir();
+    const skillSettings = await configureSkillsForInit(skillsDir, existingConfig);
 
     mkdirSync(dirname(configPath), { recursive: true });
 
@@ -65,7 +68,7 @@ export async function runInit(): Promise<void> {
         },
         database: { path: join(dataDir, 'data.db') },
         storage: { dataDir: join(dataDir, 'data') },
-        skills: { dir: skillsDir },
+        skills: { dir: skillsDir, enabled: skillSettings.enabled, env: skillSettings.env },
         mcp: { enabled: enableMcp, transport: 'http', port: mcpPort },
         browserExtension: { enabled: enableBrowserExt, port: browserExtPort },
     });
@@ -75,6 +78,96 @@ export async function runInit(): Promise<void> {
     console.log(`\n${style.success('✓')} 配置已保存: ${style.path(configPath)}`);
     printPostInitSummary(configPath, skillsDir);
     console.log(`\n${style.success('✓ 初始化完成')}\n`);
+}
+
+async function configureSkillsForInit(skillsDir: string, existingConfig: Config): Promise<{
+    enabled: Record<string, boolean>;
+    env: Record<string, Record<string, string>>;
+}> {
+    printStep('6. Skills');
+    const manifests = listSkillManifests(skillsDir);
+    if (manifests.length === 0) {
+        console.log(`  未找到 Skills 模板目录: ${style.path(skillsDir)}`);
+        console.log('  可稍后重新运行安装脚本同步模板。');
+        return {
+            enabled: existingConfig.skills.enabled,
+            env: existingConfig.skills.env,
+        };
+    }
+
+    const enabled = { ...existingConfig.skills.enabled };
+    const env = cloneSkillEnv(existingConfig.skills.env);
+
+    for (const manifest of manifests) {
+        const currentEnabled = enabled[manifest.name] ?? manifest.enabledByDefault;
+        const enable = await confirm(`启用 ${manifest.title} (${manifest.name})?`, currentEnabled);
+        enabled[manifest.name] = enable;
+        if (!enable) continue;
+
+        if (manifest.env.length > 0) {
+            const configure = await confirm(`配置 ${manifest.title} 的环境变量?`, !env[manifest.name]);
+            if (configure) {
+                env[manifest.name] = await promptSkillEnv(manifest, env[manifest.name] ?? {});
+            }
+        }
+
+        const script = manifest.install?.script ? join(manifest.dir, manifest.install.script) : findInstallScript(manifest.dir);
+        if (script) {
+            const installNow = await confirm(`现在安装 ${manifest.title} 的本地依赖?`, false);
+            if (installNow) {
+                const code = await runSkillInstallScript(script, skillsDir, env[manifest.name] ?? {});
+                if (code !== 0) {
+                    console.log(`  ${style.warn('!')} ${manifest.name} 依赖安装失败，可稍后运行 collector skills install-deps ${manifest.name}`);
+                }
+            }
+        }
+    }
+
+    return { enabled, env };
+}
+
+async function promptSkillEnv(manifest: SkillManifest, existing: Record<string, string>): Promise<Record<string, string>> {
+    const values = { ...existing };
+    for (const envVar of manifest.env) {
+        const current = values[envVar.name] ?? envVar.defaultValue ?? '';
+        if (envVar.secret && current) {
+            console.log(`  ${envVar.label} 当前值: ${maskSecret(current)}`);
+        }
+        const answer = await prompt(envQuestion(envVar), envVar.secret ? undefined : current || undefined);
+        values[envVar.name] = answer || current;
+    }
+    return values;
+}
+
+function envQuestion(envVar: SkillEnvVar): string {
+    const required = envVar.required ? '必填' : '可选';
+    const choices = envVar.choices?.length ? ` [${envVar.choices.join('/')}]` : '';
+    return `${envVar.label}${choices} (${envVar.name}, ${required})`;
+}
+
+function runSkillInstallScript(scriptPath: string, cwd: string, extraEnv: NodeJS.ProcessEnv): Promise<number | null> {
+    return new Promise((resolve, reject) => {
+        const child = spawn('bash', [scriptPath], {
+            cwd,
+            env: { ...process.env, ...extraEnv },
+            stdio: 'inherit',
+        });
+        child.on('error', reject);
+        child.on('close', resolve);
+    });
+}
+
+function cloneSkillEnv(value: Record<string, Record<string, string>>): Record<string, Record<string, string>> {
+    const result: Record<string, Record<string, string>> = {};
+    for (const [skill, env] of Object.entries(value)) {
+        result[skill] = { ...env };
+    }
+    return result;
+}
+
+function maskSecret(value: string): string {
+    if (value.length <= 8) return '****';
+    return `${value.slice(0, 3)}****${value.slice(-3)}`;
 }
 
 function printInitBanner(): void {

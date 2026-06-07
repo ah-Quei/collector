@@ -38,6 +38,8 @@ export interface StorageConfig {
 
 export interface SkillsConfig {
     dir: string;
+    enabled: Record<string, boolean>;
+    env: Record<string, Record<string, string>>;
 }
 
 export interface AgentConfig {
@@ -122,6 +124,8 @@ export class Config {
 
         this.skills = {
             dir: data.skills?.dir ?? join(homedir(), '.collector', 'skills'),
+            enabled: data.skills?.enabled ?? {},
+            env: data.skills?.env ?? {},
         };
 
         this.agent = {
@@ -198,9 +202,11 @@ export class Config {
             },
             skills: {
                 dir: process.env.COLLECTOR_SKILLS_DIR ?? stringValue(skills.dir, defaultSkillsDir),
+                enabled: booleanRecordValue(skills.enabled),
+                env: nestedStringRecordValue(skills.env),
             },
             agent: {
-                maxSteps: numberValue(agent.max_steps, 12),
+                maxSteps: numberValue(agent.max_steps, 30),
                 maxOutputTokens: numberValue(agent.max_output_tokens, 16000),
             },
             browserExtension: {
@@ -249,7 +255,11 @@ export class Config {
             opencli: this.opencli,
             database: { path: this.database.path },
             storage: { data_dir: this.storage.dataDir },
-            skills: { dir: this.skills.dir },
+            skills: {
+                dir: this.skills.dir,
+                enabled: this.skills.enabled,
+                env: this.skills.env,
+            },
             agent: {
                 max_steps: this.agent.maxSteps,
                 max_output_tokens: this.agent.maxOutputTokens,
@@ -260,6 +270,17 @@ export class Config {
         };
 
         writeFileSync(path, yaml.dump(data, { lineWidth: -1 }), 'utf-8');
+    }
+
+    getEnabledSkillEnv(): NodeJS.ProcessEnv {
+        const env: NodeJS.ProcessEnv = {};
+        for (const [skillName, values] of Object.entries(this.skills.env)) {
+            if (this.skills.enabled[skillName] === false) continue;
+            for (const [name, value] of Object.entries(values)) {
+                if (value.length > 0) env[name] = value;
+            }
+        }
+        return env;
     }
 }
 
@@ -277,6 +298,29 @@ function numberValue(value: unknown, fallback: number): number {
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
     return typeof value === 'boolean' ? value : fallback;
+}
+
+function booleanRecordValue(value: unknown): Record<string, boolean> {
+    if (!isRecord(value)) return {};
+    const result: Record<string, boolean> = {};
+    for (const [key, item] of Object.entries(value)) {
+        if (typeof item === 'boolean') result[key] = item;
+    }
+    return result;
+}
+
+function nestedStringRecordValue(value: unknown): Record<string, Record<string, string>> {
+    if (!isRecord(value)) return {};
+    const result: Record<string, Record<string, string>> = {};
+    for (const [key, item] of Object.entries(value)) {
+        if (!isRecord(item)) continue;
+        const nested: Record<string, string> = {};
+        for (const [nestedKey, nestedValue] of Object.entries(item)) {
+            if (typeof nestedValue === 'string') nested[nestedKey] = nestedValue;
+        }
+        result[key] = nested;
+    }
+    return result;
 }
 
 function parseLogLevel(value: unknown): LogLevel {

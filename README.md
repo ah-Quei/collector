@@ -66,21 +66,32 @@ collector init
 collector check
 ```
 
-## PDF 解析 Skill（MinerU）
+## 可选 Skills
 
-默认 Skills 中包含 `modality-pdf-parse`，用于把 PDF 解析成 Markdown。该 Skill 使用 MinerU，并支持两种远程视觉模型后端：
+默认 Skills 中包含 PDF、图片、音频和平台解析能力。安装器只同步 Skill 模板，不会自动安装每个 Skill 的重依赖。运行 `collector init` 时可以选择启用哪些 Skill、配置它们声明的环境变量，并按需安装依赖。
+
+常用命令：
+
+```bash
+collector skills list
+collector skills configure
+collector skills enable modality-pdf-parse
+collector skills disable modality-pdf-parse
+collector skills install-deps modality-pdf-parse
+collector skills update --strategy incoming
+```
+
+### PDF 解析 Skill（MinerU）
+
+`modality-pdf-parse` 默认不启用。启用后可用于把 PDF 解析成 Markdown。该 Skill 使用 MinerU，并支持两种远程视觉模型后端：
 
 - `hybrid-http-client`：默认选项，解析质量更稳，但本机会运行一部分 pipeline 组件，建议 16GB 内存以上。
 - `vlm-http-client`：更适合弱性能机器，本机负担更低，更多依赖在线视觉模型能力。
 
-安装 MinerU：
+安装 MinerU 依赖：
 
 ```bash
-# 默认 hybrid-http-client
-python3 -m pip install -U "mineru[pipeline]"
-
-# 如果只使用 vlm-http-client，可安装轻量版本
-python3 -m pip install -U mineru
+collector skills install-deps modality-pdf-parse
 ```
 
 配置远程 OpenAI-compatible 视觉模型：
@@ -103,7 +114,7 @@ export COLLECTOR_PDF_MINERU_BACKEND="vlm-http-client"
 export MINERU_HYBRID_BATCH_RATIO="1"
 ```
 
-这些环境变量需要配置在启动 Collector 的同一个运行环境中。缺少 `MINERU_VL_BASE_URL`、`MINERU_VL_API_KEY` 或 `MINERU_VL_MODEL_NAME` 时，PDF Skill 会停止解析并在输出中说明需要如何配置。
+这些变量可以在 `collector init` 或 `collector skills configure modality-pdf-parse` 中配置，会写入 `~/.collector/config.yaml`。缺少 `MINERU_VL_BASE_URL`、`MINERU_VL_API_KEY` 或 `MINERU_VL_MODEL_NAME` 时，PDF Skill 会停止解析并在输出中说明需要如何配置。
 
 ## 运行
 
@@ -125,6 +136,12 @@ collector start -d
 collector stop
 ```
 
+查看后台状态：
+
+```bash
+collector status
+```
+
 后台日志默认写入：
 
 ```text
@@ -139,6 +156,12 @@ collector stop
 collector update
 ```
 
+如果后台服务正在运行，`collector update` 会先停止旧进程，安装成功后再自动后台启动。只想更新文件、不重启服务时：
+
+```bash
+collector update --no-restart
+```
+
 也可以重新运行安装脚本：
 
 ```bash
@@ -146,6 +169,27 @@ curl -fsSL https://raw.githubusercontent.com/ah-Quei/collector/main/scripts/inst
 ```
 
 更新会同步程序和默认 Skills 模板。若本地修改过默认 Skill，安装器默认保留本地文件，并把上游版本写成 `.incoming` 文件。
+
+## 卸载
+
+默认卸载只删除程序和应用包，保留配置、数据库、日志和 Skills：
+
+```bash
+collector uninstall
+```
+
+彻底删除本机配置和数据：
+
+```bash
+collector uninstall --purge
+```
+
+也可以使用远端卸载脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ah-Quei/collector/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ah-Quei/collector/main/scripts/uninstall.sh | COLLECTOR_PURGE=1 bash
+```
 
 ## 常用环境变量
 

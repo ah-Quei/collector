@@ -24,7 +24,10 @@ describe('install.sh', () => {
 
             expect(version).toBe('collector 1.2.3');
             expect(readFileSync(join(root, 'skills', 'resolve-test', 'SKILL.md'), 'utf-8')).toContain('template v1');
+            expect(readFileSync(join(root, 'skills', 'resolve-test', 'collector.skill.yaml'), 'utf-8')).toContain('enabled_by_default');
+            expect(readFileSync(join(root, 'skills', 'resolve-test', 'install.sh'), 'utf-8')).toContain('install resolve-test');
             expect(readFileSync(join(root, 'skills', '.collector-skills.json'), 'utf-8')).toContain('resolve-test/SKILL.md');
+            expect(readFileSync(join(root, 'skills', '.collector-skills.json'), 'utf-8')).toContain('resolve-test/collector.skill.yaml');
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
@@ -109,6 +112,19 @@ describe('install.sh', () => {
             rmSync(root, { recursive: true, force: true });
         }
     }, INSTALL_TEST_TIMEOUT_MS);
+
+    it('can sync skills without installing the app', () => {
+        const root = mkdtempSync(join(tmpdir(), 'collector-install-'));
+        try {
+            const fixture = makeFixture(root, '1.2.3', 'template v1');
+            runInstaller(root, fixture.assetsDir, 'v1.2.3', { installApp: false });
+
+            expect(readFileSync(join(root, 'skills', 'resolve-test', 'SKILL.md'), 'utf-8')).toContain('template v1');
+            expect(() => readFileSync(join(root, 'install', 'collector'), 'utf-8')).toThrow();
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    }, INSTALL_TEST_TIMEOUT_MS);
 });
 
 function makeFixture(root: string, version: string, skillContent: string): { assetsDir: string } {
@@ -138,6 +154,11 @@ entry_conditions: {}
 
 ${skillContent}
 `, 'utf-8');
+    writeFileSync(join(skillDir, 'collector.skill.yaml'), `name: resolve-test
+title: Resolve Test
+enabled_by_default: true
+`, 'utf-8');
+    writeFileSync(join(skillDir, 'install.sh'), 'echo install resolve-test\n', 'utf-8');
 
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-linux-x64.tar.gz'), '-C', binaryDir, 'collector']);
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-skills.tar.gz'), '-C', join(root, `skills-${version}`), 'skills']);
@@ -173,6 +194,10 @@ entry_conditions: {}
 
 ${skillContent}
 `, 'utf-8');
+    writeFileSync(join(skillDir, 'collector.skill.yaml'), `name: resolve-test
+title: Resolve Test
+enabled_by_default: true
+`, 'utf-8');
 
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-linux-x64.tar.gz'), '-C', join(root, `bundle-${version}`), 'collector-linux-x64']);
     execFileSync('tar', ['-czf', join(assetsDir, 'collector-skills.tar.gz'), '-C', join(root, `skills-${version}`), 'skills']);
@@ -184,6 +209,7 @@ interface RunInstallerOptions {
     fakeExternalTools?: boolean;
     fakeNpm?: boolean;
     installExternalTools?: boolean;
+    installApp?: boolean;
     npmOutput?: string;
     path?: string;
 }
@@ -262,6 +288,7 @@ esac
             COLLECTOR_SKILLS_STRATEGY: 'incoming',
             COLLECTOR_VERSION: version,
             COLLECTOR_INSTALL_EXTERNAL_TOOLS: options.installExternalTools ? '1' : '0',
+            COLLECTOR_INSTALL_APP: options.installApp === false ? '0' : '1',
             FAKE_BIN: fakeBin,
             NPM_OUTPUT: options.npmOutput ?? join(root, 'npm-install.txt'),
             PATH: `${fakeBin}:${options.path ?? process.env.PATH}`,

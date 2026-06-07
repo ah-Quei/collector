@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -66,6 +66,62 @@ describe('CollectionService reprocessing', () => {
             [expect.objectContaining({ path: `${created.id}/xiaohongshu-downloads/note/image.jpg` })],
         );
         dbManager.close();
+    });
+
+    it('writes in-memory file inputs before running the agent and stores job-relative paths', async () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'collector-inputs-'));
+        const dbManager = new DatabaseManager(':memory:');
+        const db = dbManager.connect();
+        try {
+            const knowledgeRepo = new KnowledgeRepository(db);
+            const tagRepo = new TagRepository(db);
+            const fileContent = {
+                type: 'file' as const,
+                storageUri: 'file-key-1',
+                remoteStorageUri: 'file-key-1',
+                fileName: 'paper.pdf',
+                mimeType: 'pdf',
+                data: Buffer.from('%PDF-test'),
+            };
+            const context: IngressContext = {
+                source: 'feishu',
+                chatId: 'chat-1',
+                contents: [fileContent],
+                metadata: { messageId: 'message-1' },
+            };
+            const agentRunner = makeAgentRunner('File title');
+            const feishuDoc = {
+                createDocument: vi.fn(async () => ({ documentId: 'doc-1', wikiNodeToken: 'wiki-1' })),
+            };
+            const service = new CollectionService(
+                knowledgeRepo,
+                tagRepo,
+                agentRunner as any,
+                feishuDoc as any,
+                dataDir,
+            );
+
+            await service.handleIngress(context, makeReporter());
+
+            const [created] = knowledgeRepo.findAll();
+            const expectedContext: IngressContext = {
+                ...context,
+                contents: [{
+                    type: 'file',
+                    storageUri: 'inputs/paper.pdf',
+                    remoteStorageUri: 'file-key-1',
+                    fileName: 'paper.pdf',
+                    mimeType: 'pdf',
+                    size: 9,
+                }],
+            };
+            expect(readFileSync(join(dataDir, created.id, 'inputs', 'paper.pdf'), 'utf8')).toBe('%PDF-test');
+            expect(agentRunner.run).toHaveBeenCalledWith(expectedContext, created.id);
+            expect(created.ingressContext).toEqual(expectedContext);
+        } finally {
+            dbManager.close();
+            rmSync(dataDir, { recursive: true, force: true });
+        }
     });
 
     it('passes agent review notes to the progress reporter', async () => {
@@ -176,7 +232,7 @@ describe('CollectionService reprocessing', () => {
             await service.reprocessKnowledge(knowledge.id, 'new-chat', makeReporter());
 
             expect(existsSync(staleFile)).toBe(false);
-            expect(existsSync(join(dataDir, knowledge.id))).toBe(false);
+            expect(existsSync(join(dataDir, knowledge.id, 'artifacts'))).toBe(false);
             expect(agentRunner.run).toHaveBeenCalledWith({ ...context, chatId: 'new-chat' }, knowledge.id);
         } finally {
             dbManager.close();

@@ -59,7 +59,7 @@ export async function runStart(): Promise<void> {
     log.info('正在加载 Agent 和 Skills...');
     const skillLoader = new SkillLoader();
     if (existsSync(config.skills.dir)) {
-        skillLoader.loadFromDir(config.skills.dir);
+        skillLoader.loadFromDir(config.skills.dir, config.skills.enabled);
     } else {
         log.warn('Skills 目录不存在，请重新运行安装脚本同步模板', {
             path: config.skills.dir,

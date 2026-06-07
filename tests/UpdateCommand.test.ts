@@ -28,11 +28,13 @@ set -euo pipefail
 
             process.env.COLLECTOR_INSTALLER_PATH = installerPath;
             process.env.UPDATE_OUTPUT = outputPath;
+            process.env.COLLECTOR_CONFIG_PATH = join(root, 'collector', 'config.yaml');
 
             await runUpdate([
                 '--repo', 'example/collector',
                 '--version', 'v1.2.3',
                 '--install-dir', join(root, 'bin'),
+                '--no-restart',
             ]);
 
             const output = readFileSync(outputPath, 'utf-8');

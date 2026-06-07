@@ -74,6 +74,26 @@ export async function runStop(): Promise<void> {
     console.log(`Collector 已停止 (PID ${pid})`);
 }
 
+export function runStatus(): void {
+    const pid = readPid();
+    const logPath = getLogPath();
+    if (!pid) {
+        console.log('Collector 未在后台运行');
+        console.log(`日志: ${logPath}`);
+        return;
+    }
+
+    if (isProcessRunning(pid)) {
+        console.log(`Collector 正在后台运行 (PID ${pid})`);
+        console.log(`日志: ${logPath}`);
+        return;
+    }
+
+    removePidFile();
+    console.log('Collector 未在后台运行，已清理过期 PID 文件');
+    console.log(`日志: ${logPath}`);
+}
+
 async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {

@@ -12,6 +12,7 @@ export async function prompt(question: string, defaultValue?: string): Promise<s
 }
 
 export async function confirm(question: string, defaultValue: boolean = true): Promise<boolean> {
-    const answer = await prompt(question, defaultValue ? 'Y/n' : 'y/N');
+    const answer = await prompt(`${question} (${defaultValue ? 'Y/n' : 'y/N'})`);
+    if (!answer) return defaultValue;
     return answer.toLowerCase() !== 'n' && answer.toLowerCase() !== 'no';
 }

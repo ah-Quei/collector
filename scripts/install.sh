@@ -10,6 +10,8 @@ SKILLS_DIR="${COLLECTOR_SKILLS_DIR:-$HOME/.collector/skills}"
 SKILLS_STRATEGY="${COLLECTOR_SKILLS_STRATEGY:-incoming}"
 RELEASE_BASE_URL="${COLLECTOR_RELEASE_BASE_URL:-}"
 INSTALL_EXTERNAL_TOOLS="${COLLECTOR_INSTALL_EXTERNAL_TOOLS:-1}"
+INSTALL_APP="${COLLECTOR_INSTALL_APP:-1}"
+INSTALL_SKILLS="${COLLECTOR_INSTALL_SKILLS:-1}"
 
 log() {
     printf '%s\n' "$*"
@@ -339,9 +341,13 @@ sync_skills() {
     fi
 
     : > "$entries_file"
-    skill_files=$(find "$src_root" -type f -name 'SKILL.md' | sort)
+    skill_files=$(find "$src_root" -type f \
+        ! -name '.DS_Store' \
+        ! -name '*.incoming' \
+        ! -name '*.bak.*' \
+        | sort)
     if [ -z "$skill_files" ]; then
-        fail "collector-skills.tar.gz does not contain any SKILL.md files"
+        fail "collector-skills.tar.gz does not contain any files"
     fi
 
     added=0
@@ -413,6 +419,20 @@ EOF
 
 should_install_external_tools() {
     case "$INSTALL_EXTERNAL_TOOLS" in
+        0|false|FALSE|no|NO) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+should_install_app() {
+    case "$INSTALL_APP" in
+        0|false|FALSE|no|NO) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+should_install_skills() {
+    case "$INSTALL_SKILLS" in
         0|false|FALSE|no|NO) return 1 ;;
         *) return 0 ;;
     esac
@@ -499,8 +519,17 @@ main() {
     TMPDIR="$(mktemp -d)"
     trap 'rm -rf "$TMPDIR"' EXIT
 
-    install_collector "$os" "$arch"
-    sync_skills
+    if should_install_app; then
+        install_collector "$os" "$arch"
+    else
+        log "Skipping collector app install (COLLECTOR_INSTALL_APP=$INSTALL_APP)"
+    fi
+
+    if should_install_skills; then
+        sync_skills
+    else
+        log "Skipping Skills sync (COLLECTOR_INSTALL_SKILLS=$INSTALL_SKILLS)"
+    fi
     ensure_external_tools
     print_path_hint
     log "Done. Next step: collector init"

@@ -56,11 +56,36 @@ describe('Config skills directory', () => {
         const dir = mkdtempSync(join(tmpdir(), 'collector-config-'));
         try {
             const configPath = join(dir, 'config.yaml');
-            new Config({ skills: { dir: '/tmp/saved-skills' } }).save(configPath);
+            new Config({ skills: { dir: '/tmp/saved-skills', enabled: {}, env: {} } }).save(configPath);
 
             const config = Config.load(configPath);
 
             expect(config.skills.dir).toBe('/tmp/saved-skills');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('loads and saves skill enabled state and env', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'collector-config-'));
+        try {
+            const configPath = join(dir, 'config.yaml');
+            new Config({
+                skills: {
+                    dir: '/tmp/saved-skills',
+                    enabled: { 'modality-pdf-parse': false },
+                    env: {
+                        'modality-pdf-parse': {
+                            MINERU_VL_MODEL_NAME: 'mineru-model',
+                        },
+                    },
+                },
+            }).save(configPath);
+
+            const config = Config.load(configPath);
+
+            expect(config.skills.enabled['modality-pdf-parse']).toBe(false);
+            expect(config.skills.env['modality-pdf-parse']?.MINERU_VL_MODEL_NAME).toBe('mineru-model');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

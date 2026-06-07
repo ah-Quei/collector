@@ -57,26 +57,41 @@ esac
 exit "$missing"
 ```
 
-## Install MinerU
+## MinerU dependency
 
-If `mineru` is not available, install it with `bash`. Use the backend-specific install command.
-
-For the default `hybrid-http-client`:
+MinerU should be installed during `collector init` or by running:
 
 ```bash
-python3 -m pip install -U "mineru[pipeline]"
+collector skills install-deps modality-pdf-parse
 ```
 
-For low-resource `vlm-http-client` only:
+The install script must not install into the system Python environment. It creates an isolated Collector venv at:
 
 ```bash
-python3 -m pip install -U mineru
+${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}
 ```
 
-After installation, verify:
+Uninstalling MinerU is just deleting that venv directory:
 
 ```bash
-mineru --version
+rm -rf "${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}"
+```
+
+Do not install MinerU during document processing. If MinerU is unavailable, produce a blocked output and tell the human to run:
+
+```bash
+collector skills install-deps modality-pdf-parse
+```
+
+Verification command:
+
+```bash
+mineru_bin="$(command -v mineru || true)"
+if [ -z "$mineru_bin" ] && [ -x "${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}/bin/mineru" ]; then
+  mineru_bin="${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}/bin/mineru"
+fi
+test -n "$mineru_bin" || { echo "mineru not found after install" >&2; exit 1; }
+"$mineru_bin" --version
 ```
 
 If installation or verification fails, produce a blocked output with the command stderr and tell the human to install MinerU in the Collector runtime environment.
@@ -93,9 +108,9 @@ If installation or verification fails, produce a blocked output with the command
    - If it fails, do not parse. Produce a blocked output with the missing variables and the exact export commands the human should set.
 
 3. **Check MinerU**:
-   - Run `command -v mineru >/dev/null 2>&1`.
-   - If missing, run the install command for the selected backend.
-   - Verify `mineru --version`.
+   - Resolve `mineru_bin` with the verification command above.
+   - If missing, do not install at runtime. Produce a blocked output that tells the human to run `collector skills install-deps modality-pdf-parse`.
+   - Verify `"$mineru_bin" --version`.
 
 4. **Parse the PDF**:
    - Run MinerU from the job asset directory.
@@ -103,7 +118,12 @@ If installation or verification fails, produce a blocked output with the command
 
    ```bash
    backend="${COLLECTOR_PDF_MINERU_BACKEND:-hybrid-http-client}"
-   mineru -p "<pdf-relative-path>" -o "mineru-output" -b "$backend" -u "$MINERU_VL_BASE_URL"
+   mineru_bin="$(command -v mineru || true)"
+   if [ -z "$mineru_bin" ] && [ -x "${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}/bin/mineru" ]; then
+     mineru_bin="${COLLECTOR_MINERU_VENV:-$HOME/.collector/venvs/mineru}/bin/mineru"
+   fi
+   test -n "$mineru_bin" || { echo "mineru not found" >&2; exit 1; }
+   "$mineru_bin" -p "<pdf-relative-path>" -o "mineru-output" -b "$backend" -u "$MINERU_VL_BASE_URL"
    ```
 
 5. **Find and read parsed Markdown**:

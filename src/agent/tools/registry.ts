@@ -10,12 +10,13 @@ import { bashTool } from './BashTool.js';
 import { getSkillDetailTool } from './GetSkillDetailTool.js';
 
 export function createTools(config: Config, skillLoader?: SkillLoader, imageInputRegistry?: ImageInputRegistry) {
+    const skillEnv = config.getEnabledSkillEnv();
     const tools = [
-        openCliTool(config.opencli, config.storage.dataDir),
+        openCliTool(config.opencli, config.storage.dataDir, skillEnv),
         fetchUrlTool(config),
         readTextTool(config.storage.dataDir),
         listDirectoryTool(config.storage.dataDir),
-        bashTool(config.storage.dataDir),
+        bashTool(config.storage.dataDir, skillEnv),
         getSkillDetailTool(skillLoader ?? null),
     ];
 

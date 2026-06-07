@@ -16,7 +16,7 @@ interface OpenCliResult {
     files: FileEntry[];
 }
 
-export function openCliTool(config: OpenCLIConfig, dataDir: string) {
+export function openCliTool(config: OpenCLIConfig, dataDir: string, extraEnv: NodeJS.ProcessEnv = {}) {
     return tool({
         name: 'opencli_run',
         description: 'Run an OpenCLI command to fetch content from platforms (Xiaohongshu, Bilibili, WeChat, etc.). Pass the subcommand and arguments as an array.',
@@ -34,7 +34,7 @@ export function openCliTool(config: OpenCLIConfig, dataDir: string) {
                 execFile(
                     config.bin,
                     cliArgs,
-                    { cwd: defaultCwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: 'utf8', env: { ...process.env } },
+                    { cwd: defaultCwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: 'utf8', env: { ...process.env, ...extraEnv } },
                     (error: ExecFileException | null, stdout: string, stderr: string) => {
                         const stdoutResult = truncateText(stdout, MAX_OUTPUT_BYTES);
                         const stderrResult = truncateText(stderr, MAX_OUTPUT_BYTES);

@@ -1,0 +1,39 @@
+name: modality-pdf-parse
+title: PDF 解析
+enabled_by_default: false
+
+install:
+  script: install.sh
+  optional: true
+  description: 安装 MinerU 到 Collector 私有虚拟环境
+
+config:
+  env:
+    - name: MINERU_VL_BASE_URL
+      label: MinerU VLM Base URL
+      required: true
+      secret: false
+      default: ""
+    - name: MINERU_VL_API_KEY
+      label: MinerU VLM API Key
+      required: true
+      secret: true
+      default: ""
+    - name: MINERU_VL_MODEL_NAME
+      label: MinerU VLM Model
+      required: true
+      secret: false
+      default: ""
+    - name: COLLECTOR_PDF_MINERU_BACKEND
+      label: PDF 解析后端
+      required: false
+      secret: false
+      default: hybrid-http-client
+      choices:
+        - hybrid-http-client
+        - vlm-http-client
+    - name: MINERU_HYBRID_BATCH_RATIO
+      label: Hybrid 批量比例
+      required: false
+      secret: false
+      default: "1"

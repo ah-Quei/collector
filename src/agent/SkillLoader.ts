@@ -13,7 +13,7 @@ export class SkillLoader {
      * Load all skills from a directory.
      * Each skill is a subdirectory containing a SKILL.md file with YAML frontmatter.
      */
-    loadFromDir(skillsDir: string): void {
+    loadFromDir(skillsDir: string, enabled: Record<string, boolean> = {}): void {
         if (!existsSync(skillsDir)) return;
 
         const entries = readdirSync(skillsDir, { withFileTypes: true });
@@ -25,6 +25,7 @@ export class SkillLoader {
             if (!existsSync(skillFile)) continue;
 
             const skill = parseSkillFile(skillFile);
+            if (skill && !isSkillEnabled(join(skillsDir, entry.name), skill.name, enabled)) continue;
             if (skill) skills.push(skill);
         }
 
@@ -63,6 +64,16 @@ export class SkillLoader {
         if (!skill) return null;
         return { name: skill.name, kind: skill.kind, content: skill.content };
     }
+}
+
+function isSkillEnabled(skillDir: string, skillName: string, enabled: Record<string, boolean>): boolean {
+    if (enabled[skillName] !== undefined) return enabled[skillName];
+    const manifestPath = join(skillDir, 'collector.skill.yaml');
+    if (!existsSync(manifestPath)) return true;
+
+    const parsed = yaml.load(readFileSync(manifestPath, 'utf-8'));
+    if (!isRecord(parsed)) return true;
+    return typeof parsed.enabled_by_default === 'boolean' ? parsed.enabled_by_default : true;
 }
 
 function parseSkillFile(filePath: string): Skill | null {

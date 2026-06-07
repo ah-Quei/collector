@@ -3,6 +3,11 @@ export interface RawContent {
     text?: string;
     mimeType?: string;
     storageUri?: string;
+    remoteStorageUri?: string;
+    fileName?: string;
+    size?: number;
+    downloadError?: string;
+    data?: Uint8Array;
 }
 
 export interface IngressContext {

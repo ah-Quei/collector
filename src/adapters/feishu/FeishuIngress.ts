@@ -50,15 +50,9 @@ export class FeishuIngress extends BaseAdapter {
                     const { message } = data;
                     const msgType = message.message_type as string;
                     this.log.debug(`收到飞书消息`, { type: msgType, chatId: message.chat_id });
-                    const context = this.parseMessage(message);
-
-                    // Return immediately to avoid Feishu 3-second timeout retry
-                    if (context) {
-                        const reporter = new CardProgressReporter(this.client, context.chatId);
-                        this.onMessage(context, reporter).catch(e => {
-                            this.log.error('处理飞书消息失败', { error: String(e) });
-                        });
-                    }
+                    this.handleMessage(message).catch(e => {
+                        this.log.error('处理飞书消息失败', { error: String(e) });
+                    });
                 },
                 'card.action.trigger': async (data: unknown) => {
                     const action = extractCardAction(data);
@@ -81,6 +75,14 @@ export class FeishuIngress extends BaseAdapter {
         this.log.info('飞书 WebSocket 已连接');
     }
 
+    private async handleMessage(message: Record<string, unknown>): Promise<void> {
+        const context = await this.parseMessage(message);
+        if (!context) return;
+
+        const reporter = new CardProgressReporter(this.client, context.chatId);
+        await this.onMessage(context, reporter);
+    }
+
     async stop(): Promise<void> {
         this.wsClient?.close();
         this.wsClient = null;
@@ -90,12 +92,13 @@ export class FeishuIngress extends BaseAdapter {
         return this.wsClient !== null;
     }
 
-    private parseMessage(message: Record<string, unknown>): IngressContext | null {
+    private async parseMessage(message: Record<string, unknown>): Promise<IngressContext | null> {
         const chatId = message.chat_id as string;
         if (!chatId) return null;
 
         const msgType = message.message_type as string;
         const content = parseMessageContent(message.content);
+        const messageId = message.message_id as string;
 
         const contents: RawContent[] = [];
 
@@ -104,32 +107,35 @@ export class FeishuIngress extends BaseAdapter {
                 contents.push({ type: 'text', text: stringValue(content.text, '') });
                 break;
             case 'image':
-                contents.push({
+                contents.push(await this.withMessageResource({
                     type: 'image',
                     mimeType: 'image/jpeg',
                     storageUri: optionalString(content.image_key),
-                });
+                }, messageId, 'image'));
                 break;
             case 'audio':
-                contents.push({
+                contents.push(await this.withMessageResource({
                     type: 'audio',
                     mimeType: 'audio/m4a',
                     storageUri: optionalString(content.file_key),
-                });
+                    fileName: optionalString(content.file_name),
+                }, messageId, 'audio'));
                 break;
             case 'media':
-                contents.push({
+                contents.push(await this.withMessageResource({
                     type: 'video',
                     mimeType: 'video/mp4',
                     storageUri: optionalString(content.file_key),
-                });
+                    fileName: optionalString(content.file_name),
+                }, messageId, 'media'));
                 break;
             case 'file':
-                contents.push({
+                contents.push(await this.withMessageResource({
                     type: 'file',
                     mimeType: stringValue(content.file_type, 'application/octet-stream'),
                     storageUri: optionalString(content.file_key),
-                });
+                    fileName: optionalString(content.file_name),
+                }, messageId, 'file'));
                 break;
             default:
                 return null;
@@ -140,9 +146,53 @@ export class FeishuIngress extends BaseAdapter {
             chatId,
             contents,
             metadata: {
-                messageId: message.message_id as string,
+                messageId,
             },
         };
+    }
+
+    private async withMessageResource(content: RawContent, messageId: string, resourceType: string): Promise<RawContent> {
+        const fileKey = content.storageUri;
+        if (!fileKey || !messageId) return content;
+
+        try {
+            const data = await this.downloadMessageResource(messageId, fileKey, resourceType);
+            return {
+                ...content,
+                remoteStorageUri: fileKey,
+                data,
+                size: data.byteLength,
+            };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log.warn('飞书消息资源下载到内存失败', {
+                messageId,
+                fileKey,
+                type: resourceType,
+                error: message,
+            });
+            return {
+                ...content,
+                downloadError: message,
+            };
+        }
+    }
+
+    private async downloadMessageResource(messageId: string, fileKey: string, resourceType: string): Promise<Buffer> {
+        const response = await this.client.im.messageResource.get({
+            path: {
+                message_id: messageId,
+                file_key: fileKey,
+            },
+            params: {
+                type: resourceType,
+            },
+        });
+        const chunks: Buffer[] = [];
+        for await (const chunk of response.getReadableStream()) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        return Buffer.concat(chunks);
     }
 }
 
