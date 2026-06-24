@@ -231,7 +231,7 @@ function printFeishuManualChecklist(appId: string): void {
     const links = getFeishuConsoleLinks(appId);
     console.log(`  ${style.label('应用身份权限')}`);
     console.log(`  - 知识库写入: ${style.link(links.wikiNodeAuth)}`);
-    console.log(`    开通任一权限: ${style.code('wiki:wiki')} / ${style.code('wiki:node:create')}`);
+    console.log(`    需要权限: ${style.code('wiki:wiki')} / ${style.code('wiki:node:update')}`);
     console.log(`  - 素材上传: ${style.link(links.mediaUploadAuth)}`);
     console.log(`    开通任一权限: ${style.code('docs:document.media:upload')} / ${style.code('drive:drive')}`);
     console.log('');
@@ -384,7 +384,7 @@ function getFeishuConsoleLinks(appId: string): {
         baseinfo: `${base}/baseinfo`,
         auth: `${base}/auth`,
         event: `${base}/event`,
-        wikiNodeAuth: `${base}/auth?q=wiki%3Awiki%2Cwiki%3Anode%3Acreate&op_from=openapi&token_type=tenant`,
+        wikiNodeAuth: `${base}/auth?q=wiki%3Awiki%2Cwiki%3Anode%3Aupdate&op_from=openapi&token_type=tenant`,
         mediaUploadAuth: `${base}/auth?q=docs%3Adoc%2Cdrive%3Adrive%2Csheets%3Aspreadsheet%2Cvc%3Amaterial%2Cbitable%3Aapp%2Cmoments%3Amoments%2Cdocs%3Adocument.media%3Aupload%2Cmail%3Auser_mailbox.message%3Amodify&op_from=openapi&token_type=tenant`,
     };
 }
