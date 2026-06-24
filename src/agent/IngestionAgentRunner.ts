@@ -81,8 +81,15 @@ export class IngestionAgentRunner {
 
         const output = result.finalOutput;
         if (!output) {
+            this.log.error('Agent 未产生输出', { result: JSON.stringify(result).slice(0, 2000) });
             throw new Error('Agent produced no output');
         }
+
+        this.log.debug('Agent 输出类型', {
+            outputType: typeof output,
+            isObject: typeof output === 'object',
+            keys: typeof output === 'object' ? Object.keys(output) : [],
+        });
 
         return output as AgentOutput;
     }
