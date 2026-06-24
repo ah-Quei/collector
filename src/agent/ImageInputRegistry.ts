@@ -66,12 +66,17 @@ class ImageInjectingModel implements Model {
 
         const registry = this.getRegistry();
         const input: AgentInputItem[] = [];
+        const allImageIds: string[] = [];
 
         for (const item of request.input) {
             input.push(item);
             const imageIds = getImageInputIds(item);
-            if (imageIds.length === 0) continue;
+            allImageIds.push(...imageIds);
+        }
 
+        // Inject all images as a single user message AFTER all tool results
+        // to maintain proper message ordering (assistant -> tools -> user)
+        if (allImageIds.length > 0) {
             const content: Array<
                 | { type: 'input_text'; text: string }
                 | { type: 'input_image'; image: string }
@@ -82,7 +87,7 @@ class ImageInjectingModel implements Model {
                 },
             ];
 
-            for (const id of imageIds) {
+            for (const id of allImageIds) {
                 const image = registry.get(id);
                 if (!image) continue;
                 content.push({ type: 'input_text', text: `Image file: ${image.path} (${image.mimeType}, ${image.size} bytes)` });
