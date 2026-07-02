@@ -1,7 +1,7 @@
 import { Agent, Runner, OpenAIProvider, setTraceProcessors, setTracingDisabled } from '@openai/agents';
 import type { SkillLoader } from './SkillLoader.js';
 import type { IngressContext } from '../models/IngressContext.js';
-import { AgentOutputSchema, type AgentOutput } from './schemas.js';
+import { type AgentOutput } from './schemas.js';
 import { buildSystemPrompt } from './prompts.js';
 import { createTools } from './tools/registry.js';
 import { createOutputCapture } from './tools/SubmitOutputTool.js';
@@ -89,42 +89,11 @@ export class IngestionAgentRunner {
             return captured;
         }
 
-        // Fallback: the model did not call `submit_output`. Try to recover an
-        // AgentOutput from the final text output (e.g. a fenced JSON block).
-        const finalText = typeof result.finalOutput === 'string' ? result.finalOutput : undefined;
-        const recovered = finalText ? this.recoverOutputFromText(finalText) : undefined;
-        if (recovered) {
-            this.log.warn('Agent 未调用 submit_output，已从最终文本中恢复输出', {
-                finalTextLength: finalText?.length,
-            });
-            return recovered;
-        }
-
-        this.log.error('Agent 未产生输出', {
-            calledSubmitOutput: false,
+        this.log.error('Agent 未调用 submit_output', {
             finalOutputType: typeof result.finalOutput,
-            finalOutputPreview: finalText?.slice(0, 200),
+            finalOutputPreview: typeof result.finalOutput === 'string' ? result.finalOutput.slice(0, 200) : undefined,
         });
-        throw new Error('Agent produced no output: did not call submit_output and no JSON could be recovered from the final text');
-    }
-
-    private recoverOutputFromText(text: string): AgentOutput | undefined {
-        // Prefer a fenced ```json ... ``` block, then a raw JSON object.
-        const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        const candidates = fenced ? [fenced[1]] : [text];
-        for (const candidate of candidates) {
-            const start = candidate.indexOf('{');
-            const end = candidate.lastIndexOf('}');
-            if (start === -1 || end === -1 || end <= start) continue;
-            const jsonStr = candidate.slice(start, end + 1);
-            try {
-                const parsed = AgentOutputSchema.parse(JSON.parse(jsonStr));
-                return parsed;
-            } catch {
-                // try next candidate
-            }
-        }
-        return undefined;
+        throw new Error('Agent produced no output: did not call submit_output');
     }
 
     private buildUserMessage(context: IngressContext): string {
