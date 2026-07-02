@@ -44,7 +44,6 @@ export interface SkillsConfig {
 
 export interface AgentConfig {
     maxSteps: number;
-    maxOutputTokens: number;
 }
 
 export interface BrowserExtensionConfig {
@@ -129,8 +128,7 @@ export class Config {
         };
 
         this.agent = {
-            maxSteps: data.agent?.maxSteps ?? 12,
-            maxOutputTokens: data.agent?.maxOutputTokens ?? 16000,
+            maxSteps: data.agent?.maxSteps ?? 30,
         };
 
         this.browserExtension = {
@@ -207,7 +205,6 @@ export class Config {
             },
             agent: {
                 maxSteps: numberValue(agent.max_steps, 30),
-                maxOutputTokens: numberValue(agent.max_output_tokens, 16000),
             },
             browserExtension: {
                 enabled: booleanValue(browserExtension.enabled, true),
@@ -262,7 +259,6 @@ export class Config {
             },
             agent: {
                 max_steps: this.agent.maxSteps,
-                max_output_tokens: this.agent.maxOutputTokens,
             },
             browser_extension: this.browserExtension,
             mcp: this.mcp,

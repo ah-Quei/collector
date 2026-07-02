@@ -5,4 +5,5 @@ export { readTextTool } from './ReadTextTool.js';
 export { listDirectoryTool } from './ListDirectoryTool.js';
 export { bashTool } from './BashTool.js';
 export { getSkillDetailTool, type SkillDetailSource } from './GetSkillDetailTool.js';
+export { submitOutputTool, createOutputCapture, type OutputCapture } from './SubmitOutputTool.js';
 export { createTools } from './registry.js';

@@ -7,6 +7,7 @@ import { bashTool } from '../src/agent/tools/BashTool.js';
 import { listDirectoryTool } from '../src/agent/tools/ListDirectoryTool.js';
 import { openCliTool } from '../src/agent/tools/OpenCliTool.js';
 import { readImageTool } from '../src/agent/tools/ReadImageTool.js';
+import { submitOutputTool, createOutputCapture } from '../src/agent/tools/SubmitOutputTool.js';
 import { createTools } from '../src/agent/tools/registry.js';
 import { Config } from '../src/config/Config.js';
 
@@ -17,6 +18,44 @@ describe('agent asset tools', () => {
 
         expect(withoutVision).not.toContain('read_image_asset');
         expect(withVision).toContain('read_image_asset');
+    });
+
+    it('registers submit_output only when an output capture is provided', () => {
+        expect(createTools(makeConfig(false)).map((t) => t.name)).not.toContain('submit_output');
+        const capture = createOutputCapture();
+        const names = createTools(
+            makeConfig(true),
+            undefined,
+            new ImageInputRegistry(),
+            capture,
+        ).map((t) => t.name);
+        expect(names).toContain('submit_output');
+    });
+
+    it('submit_output captures a schema-valid AgentOutput and acks the caller', async () => {
+        const capture = createOutputCapture();
+        const tool = submitOutputTool(capture);
+        const validOutput = makeValidOutputFixture();
+
+        const ack = await tool.invoke({} as any, JSON.stringify(validOutput));
+
+        expect(ack).toBe('Output received. You may end the conversation.');
+        expect(capture.get()).toMatchObject({ title: 'Test title', platform: 'wechat' });
+        capture.clear();
+        expect(capture.get()).toBeUndefined();
+    });
+
+    it('submit_output rejects schema-invalid arguments', async () => {
+        const capture = createOutputCapture();
+        const tool = submitOutputTool(capture);
+        // confidence out of [0,1] violates the schema
+        const invalidOutput = { ...makeValidOutputFixture(), confidence: 1.7 };
+
+        const result = await tool
+            .invoke({} as any, JSON.stringify(invalidOutput))
+            .catch((e: unknown) => String(e));
+        expect(result).toMatch(/Invalid JSON input for tool|Invalid tool arguments/i);
+        expect(capture.get()).toBeUndefined();
     });
 
     it('adds recursive job file listings to opencli output', async () => {
@@ -184,4 +223,24 @@ function parseToolResult<T>(output: string): { ok: true; data: T } {
     const parsed = JSON.parse(output);
     expect(parsed.ok).toBe(true);
     return parsed;
+}
+
+function makeValidOutputFixture() {
+    return {
+        title: 'Test title',
+        summary: 'A short summary.',
+        contentMarkdown: '# Title\n\nbody',
+        author: 'author',
+        publishedAt: '2025-01-01T00:00:00.000Z',
+        platform: 'wechat',
+        contentType: 'text',
+        sourceUrl: 'https://example.com/a',
+        canonicalUrl: null,
+        selectedExistingTags: [],
+        newTags: [{ name: 'topic-a', kind: 'topic' }],
+        artifactRefs: [],
+        confidence: 0.8,
+        needsReview: false,
+        qualityNotes: 'none',
+    };
 }

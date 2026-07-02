@@ -1,3 +1,4 @@
+import { type Tool } from '@openai/agents';
 import type { Config } from '../../config/Config.js';
 import type { SkillLoader } from '../SkillLoader.js';
 import type { ImageInputRegistry } from '../ImageInputRegistry.js';
@@ -8,10 +9,11 @@ import { readTextTool } from './ReadTextTool.js';
 import { listDirectoryTool } from './ListDirectoryTool.js';
 import { bashTool } from './BashTool.js';
 import { getSkillDetailTool } from './GetSkillDetailTool.js';
+import { submitOutputTool, type OutputCapture } from './SubmitOutputTool.js';
 
-export function createTools(config: Config, skillLoader?: SkillLoader, imageInputRegistry?: ImageInputRegistry) {
+export function createTools(config: Config, skillLoader?: SkillLoader, imageInputRegistry?: ImageInputRegistry, outputCapture?: OutputCapture) {
     const skillEnv = config.getEnabledSkillEnv();
-    const tools = [
+    const tools: Tool[] = [
         openCliTool(config.opencli, config.storage.dataDir, skillEnv),
         fetchUrlTool(config),
         readTextTool(config.storage.dataDir),
@@ -22,6 +24,10 @@ export function createTools(config: Config, skillLoader?: SkillLoader, imageInpu
 
     if (config.llm.vision) {
         tools.push(readImageTool(config.storage.dataDir, imageInputRegistry));
+    }
+
+    if (outputCapture) {
+        tools.push(submitOutputTool(outputCapture));
     }
 
     return tools;

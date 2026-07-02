@@ -4,6 +4,7 @@ import type { IngressContext } from '../models/IngressContext.js';
 import { AgentOutputSchema, type AgentOutput } from './schemas.js';
 import { buildSystemPrompt } from './prompts.js';
 import { createTools } from './tools/registry.js';
+import { createOutputCapture } from './tools/SubmitOutputTool.js';
 import { ImageInjectingModelProvider, ImageInputRegistry } from './ImageInputRegistry.js';
 import type { Config } from '../config/Config.js';
 import type { TagRepository } from '../data/TagRepository.js';
@@ -51,7 +52,11 @@ export class IngestionAgentRunner {
         this.imageInputRegistry = new ImageInputRegistry();
         const systemPrompt = buildSystemPrompt(this.config.llm, this.skillLoader, existingTags);
         const userInput = this.buildUserMessage(context);
-        const tools = createTools(this.config, this.skillLoader, this.imageInputRegistry);
+        // Structured output is delivered via the `submit_output` function tool
+        // (captured here) rather than via `response_format`/json_schema, which many
+        // providers (e.g. MiniMax-M3) do not support.
+        const outputCapture = createOutputCapture();
+        const tools = createTools(this.config, this.skillLoader, this.imageInputRegistry, outputCapture);
 
         this.log.debug('Agent 配置', {
             model: this.config.llm.model,
@@ -64,7 +69,6 @@ export class IngestionAgentRunner {
             name: 'collector',
             instructions: systemPrompt,
             tools,
-            outputType: AgentOutputSchema,
             model: this.config.llm.model,
             modelSettings: {
                 maxTokens: this.config.llm.maxTokens,
@@ -79,19 +83,48 @@ export class IngestionAgentRunner {
             this.imageInputRegistry.clear();
         });
 
-        const output = result.finalOutput;
-        if (!output) {
-            this.log.error('Agent 未产生输出', { result: JSON.stringify(result).slice(0, 2000) });
-            throw new Error('Agent produced no output');
+        const captured = outputCapture.get();
+        if (captured) {
+            this.log.debug('Agent 输出方式', { source: 'submit_output_tool' });
+            return captured;
         }
 
-        this.log.debug('Agent 输出类型', {
-            outputType: typeof output,
-            isObject: typeof output === 'object',
-            keys: typeof output === 'object' ? Object.keys(output) : [],
-        });
+        // Fallback: the model did not call `submit_output`. Try to recover an
+        // AgentOutput from the final text output (e.g. a fenced JSON block).
+        const finalText = typeof result.finalOutput === 'string' ? result.finalOutput : undefined;
+        const recovered = finalText ? this.recoverOutputFromText(finalText) : undefined;
+        if (recovered) {
+            this.log.warn('Agent 未调用 submit_output，已从最终文本中恢复输出', {
+                finalTextLength: finalText?.length,
+            });
+            return recovered;
+        }
 
-        return output as AgentOutput;
+        this.log.error('Agent 未产生输出', {
+            calledSubmitOutput: false,
+            finalOutputType: typeof result.finalOutput,
+            finalOutputPreview: finalText?.slice(0, 200),
+        });
+        throw new Error('Agent produced no output: did not call submit_output and no JSON could be recovered from the final text');
+    }
+
+    private recoverOutputFromText(text: string): AgentOutput | undefined {
+        // Prefer a fenced ```json ... ``` block, then a raw JSON object.
+        const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        const candidates = fenced ? [fenced[1]] : [text];
+        for (const candidate of candidates) {
+            const start = candidate.indexOf('{');
+            const end = candidate.lastIndexOf('}');
+            if (start === -1 || end === -1 || end <= start) continue;
+            const jsonStr = candidate.slice(start, end + 1);
+            try {
+                const parsed = AgentOutputSchema.parse(JSON.parse(jsonStr));
+                return parsed;
+            } catch {
+                // try next candidate
+            }
+        }
+        return undefined;
     }
 
     private buildUserMessage(context: IngressContext): string {
