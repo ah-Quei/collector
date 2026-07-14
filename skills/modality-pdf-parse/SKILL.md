@@ -87,10 +87,15 @@ If any are missing, produce a blocked output telling the human to install them. 
 
 4. **Read parsed Markdown**:
    - Take the `full.md` path printed on stdout by the script.
-   - Read it with `read_text_asset` using the path relative to the job asset directory (strip the job root prefix from the absolute path the script prints).
-   - Images extracted by MinerU live next to `full.md` in an `images/` directory and are referenced from the Markdown. They are extracted content; describe them inline where useful.
+   - Read it with `read_text_asset` using the path relative to the job asset directory (strip the job root prefix from the absolute path the script prints). Example: if the script prints `/home/.../data/<knowledgeId>/mineru-output/full.md`, the `read_text_asset` path is `mineru-output/full.md`.
+   - Images extracted by MinerU live next to `full.md` in an `images/` directory and are referenced from the Markdown as `![](images/<hash>.jpg)`. These paths are **relative to `full.md`'s directory (the output dir, e.g. `mineru-output/`)**, NOT to the job root.
 
-5. **Produce the article**:
+5. **Build artifactRefs with correct job-relative paths** (IMPORTANT — getting this wrong causes publish-time ENOENT):
+   - Call `list_asset_directory` with `path: "mineru-output"` and `recursive: true` to get the exact job-relative paths of every extracted image (they will look like `mineru-output/images/<hash>.jpg`).
+   - When you convert a Markdown `![](images/<hash>.jpg)` into an artifact marker `[[artifact:<id>]]`, the matching `artifactRefs[].path` MUST be the job-relative path from that listing — i.e. `mineru-output/images/<hash>.jpg`, **with the `mineru-output/` prefix**. NEVER submit `images/<hash>.jpg` alone, because that resolves to `<dataDir>/<knowledgeId>/images/<hash>.jpg` which does not exist; the real file is under `mineru-output/`.
+   - Paths in `artifactRefs` must be relative to the job directory and must NOT start with `/` or contain the knowledge id / storage data directory.
+
+6. **Produce the article**:
    - Use the MinerU Markdown as the source of truth.
    - Preserve headings, tables, formulas, image placeholders, and page-derived structure when useful.
    - Include the original PDF filename in the source section.
