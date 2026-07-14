@@ -74,141 +74,20 @@ If any are missing, produce a blocked output telling the human to install them. 
    - If it fails, do not parse. Produce a blocked output with the missing variables and the exact steps the human should run.
 
 3. **Parse the PDF with the MinerU remote API**:
-   - Save the helper script below to `/tmp/mineru-remote-parse.py`.
-   - Run it from the job asset directory, passing the PDF path (relative or absolute) and an output directory such as `mineru-output`:
+   - Run the preinstalled helper script directly with `bash`. It already exists in the Skill directory — do NOT create, write, or save any file yourself.
 
    ```bash
-   python3 /tmp/mineru-remote-parse.py "<pdf-path>" "mineru-output"
+   python3 "$HOME/.collector/skills/modality-pdf-parse/scripts/mineru-remote-parse.py" "<pdf-path>" "mineru-output"
    ```
 
+   - Pass the PDF path (relative to the job asset directory or absolute) and an output directory such as `mineru-output`.
    - The script prints progress to stderr and, on success, prints the absolute path of the generated `full.md` to stdout as the final line.
    - On failure it prints the reason to stderr and exits non-zero. Produce a blocked output with the stderr text and set `needsReview` to true.
-
-   Helper script:
-
-   ```python
-   #!/usr/bin/env python3
-   import json, os, sys, time, urllib.request, urllib.error, zipfile
-
-   TOKEN = os.environ.get("MINERU_API_TOKEN", "")
-   BASE = os.environ.get("MINERU_API_BASE_URL", "https://mineru.net/api/v4").rstrip("/")
-   MODEL = os.environ.get("MINERU_MODEL_VERSION", "vlm")
-   LANGUAGE = os.environ.get("MINERU_LANGUAGE", "ch")
-   ENABLE_OCR = os.environ.get("MINERU_ENABLE_OCR", "").lower() in ("1", "true", "yes", "on")
-   PAGE_RANGES = os.environ.get("MINERU_PAGE_RANGES", "").strip()
-   TIMEOUT = int(os.environ.get("MINERU_EXTRACT_TIMEOUT", "1800"))
-
-   def die(msg, code=1):
-       print(msg, file=sys.stderr); sys.exit(code)
-
-   def req(method, path, body=None, raw=None):
-       data = None
-       headers = {"Authorization": f"Bearer {TOKEN}"}
-       if body is not None:
-           data = json.dumps(body).encode(); headers["Content-Type"] = "application/json"
-       elif raw is not None:
-           data = raw
-       r = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
-       try:
-           with urllib.request.urlopen(r, timeout=120) as resp:
-               return json.loads(resp.read())
-       except urllib.error.HTTPError as e:
-           body_text = e.read().decode(errors="replace")
-           die(f"HTTP {e.code} for {method} {path}: {body_text[:500]}")
-       except urllib.error.URLError as e:
-           die(f"network error for {method} {path}: {e}")
-
-   def common_fields():
-       f = {"model_version": MODEL, "is_ocr": ENABLE_OCR,
-            "enable_formula": True, "enable_table": True, "language": LANGUAGE}
-       if PAGE_RANGES: f["page_ranges"] = PAGE_RANGES
-       return f
-
-   def poll_task(task_id):
-       deadline = time.time() + TIMEOUT
-       while time.time() < deadline:
-           r = req("GET", f"/extract/task/{task_id}")
-           d = r.get("data", {})
-           state = d.get("state", "?")
-           print(f"  task {task_id[:8]} state={state}", file=sys.stderr)
-           if state == "done": return d.get("full_zip_url", "")
-           if state == "failed": die(f"task failed: {d.get('err_msg','')}")
-           time.sleep(10)
-       die("task polling timed out")
-
-   def poll_batch(batch_id):
-       deadline = time.time() + TIMEOUT
-       while time.time() < deadline:
-           r = req("GET", f"/extract-results/batch/{batch_id}")
-           items = r.get("data", {}).get("extract_result", [])
-           states = [it.get("state") for it in items]
-           print(f"  batch {batch_id[:8]} states={states}", file=sys.stderr)
-           if items:
-               it = items[0]
-               if it.get("state") == "done": return it.get("full_zip_url", "")
-               if it.get("state") == "failed": die(f"batch file failed: {it.get('err_msg','')}")
-           time.sleep(10)
-       die("batch polling timed out")
-
-   def put_upload(url, path):
-       import subprocess
-       # IMPORTANT: use curl with an empty Content-Type header. OSS presigned PUT
-       # signatures break if a Content-Type is sent; curl's -H "Content-Type:" clears
-       # the default it would otherwise add for --data-binary.
-       res = subprocess.run(
-           ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
-            "-X", "PUT", "--data-binary", f"@{path}", "-H", "Content-Type:", url],
-           capture_output=True, text=True)
-       code = res.stdout.strip()
-       if code != "200":
-           die(f"upload PUT failed HTTP {code}: {res.stderr[:300]}")
-       return 200
-
-   def main():
-       if not TOKEN: die("MINERU_API_TOKEN is not set")
-       if len(sys.argv) < 3: die("usage: mineru-remote-parse.py <pdf-path-or-url> <output-dir>")
-       src, out = sys.argv[1], sys.argv[2]
-       is_url = src.startswith("http://") or src.startswith("https://")
-       print(f"== MinerU remote parse: {src} -> {out} ==", file=sys.stderr)
-
-       if is_url:
-           body = {"url": src, "data_id": f"collector-{int(time.time())}", **common_fields()}
-           r = req("POST", "/extract/task", body)
-           if r.get("code") != 0: die(f"submit failed: {r.get('msg')} {r.get('data','')}")
-           zip_url = poll_task(r["data"]["task_id"])
-       else:
-           if not os.path.isfile(src): die(f"file not found: {src}")
-           name = os.path.basename(src)
-           body = {"files": [{"name": name, "data_id": f"collector-{int(time.time())}"}], **common_fields()}
-           r = req("POST", "/file-urls/batch", body)
-           if r.get("code") != 0: die(f"apply upload url failed: {r.get('msg')} {r.get('data','')}")
-           d = r["data"]; batch_id, urls = d["batch_id"], d["file_urls"]
-           if not urls: die("no upload url returned")
-           print(f"  uploading {name} ({os.path.getsize(src)} bytes)", file=sys.stderr)
-           put_upload(urls[0], src)
-           zip_url = poll_batch(batch_id)
-
-       if not zip_url: die("no full_zip_url in result")
-       os.makedirs(out, exist_ok=True)
-       tmp_zip = os.path.join(out, "mineru-result.zip")
-       print(f"  downloading result zip", file=sys.stderr)
-       urllib.request.urlretrieve(zip_url, tmp_zip)
-       with zipfile.ZipFile(tmp_zip) as z: z.extractall(out)
-       os.remove(tmp_zip)
-
-       full_md = None
-       for root, _, files in os.walk(out):
-           if "full.md" in files: full_md = os.path.join(root, "full.md"); break
-       if not full_md: die(f"full.md not found in {out}")
-       print(f"  done: {full_md}", file=sys.stderr)
-       print(os.path.abspath(full_md))
-
-   if __name__ == "__main__": main()
-   ```
+   - Do NOT invent or call any `write_text_asset` / `write_file` / similar tool. The only tools available are `bash`, `list_asset_directory`, `read_text_asset`, `read_image_asset`, `fetch_url`, `opencli_run`, `get_skill_detail`, and `submit_output`. Writing files is done through `bash` only, and this Skill does not require writing any file.
 
 4. **Read parsed Markdown**:
    - Take the `full.md` path printed on stdout by the script.
-   - Read it with `read_text_asset` (or `read` if absolute).
+   - Read it with `read_text_asset` using the path relative to the job asset directory (strip the job root prefix from the absolute path the script prints).
    - Images extracted by MinerU live next to `full.md` in an `images/` directory and are referenced from the Markdown. They are extracted content; describe them inline where useful.
 
 5. **Produce the article**:
