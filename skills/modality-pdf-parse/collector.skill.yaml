@@ -1,39 +1,52 @@
 name: modality-pdf-parse
-title: PDF 解析
+title: PDF 解析（MinerU 远程 API）
 enabled_by_default: false
 
 install:
   script: install.sh
   optional: true
-  description: 安装 MinerU 到 Collector 私有虚拟环境
+  description: 检查 curl / python3 / unzip 等运行时依赖（无需安装 MinerU）
 
 config:
   env:
-    - name: MINERU_VL_BASE_URL
-      label: MinerU VLM Base URL
-      required: true
-      secret: false
-      default: ""
-    - name: MINERU_VL_API_KEY
-      label: MinerU VLM API Key
+    - name: MINERU_API_TOKEN
+      label: MinerU API Token
       required: true
       secret: true
       default: ""
-    - name: MINERU_VL_MODEL_NAME
-      label: MinerU VLM Model
-      required: true
+    - name: MINERU_API_BASE_URL
+      label: MinerU API Base URL
+      required: false
+      secret: false
+      default: https://mineru.net/api/v4
+    - name: MINERU_MODEL_VERSION
+      label: 解析模型
+      required: false
+      secret: false
+      default: vlm
+      choices:
+        - vlm
+        - pipeline
+    - name: MINERU_LANGUAGE
+      label: 文档语言
+      required: false
+      secret: false
+      default: ch
+    - name: MINERU_ENABLE_OCR
+      label: 启用 OCR（扫描件）
+      required: false
+      secret: false
+      default: "false"
+      choices:
+        - "true"
+        - "false"
+    - name: MINERU_PAGE_RANGES
+      label: 页码范围
+      required: false
       secret: false
       default: ""
-    - name: COLLECTOR_PDF_MINERU_BACKEND
-      label: PDF 解析后端
+    - name: MINERU_EXTRACT_TIMEOUT
+      label: 轮询超时（秒）
       required: false
       secret: false
-      default: hybrid-http-client
-      choices:
-        - hybrid-http-client
-        - vlm-http-client
-    - name: MINERU_HYBRID_BATCH_RATIO
-      label: Hybrid 批量比例
-      required: false
-      secret: false
-      default: "1"
+      default: "1800"

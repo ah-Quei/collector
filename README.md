@@ -81,40 +81,27 @@ collector skills install-deps modality-pdf-parse
 collector skills update --strategy incoming
 ```
 
-### PDF 解析 Skill（MinerU）
+### PDF 解析 Skill（MinerU 远程 API）
 
-`modality-pdf-parse` 默认不启用。启用后可用于把 PDF 解析成 Markdown。该 Skill 使用 MinerU，并支持两种远程视觉模型后端：
+`modality-pdf-parse` 默认不启用。启用后可通过 MinerU 官网远程 API 把 PDF 解析成 Markdown。解析全部在 MinerU 服务器上完成，本地无需安装 MinerU 或任何视觉模型，只需 `curl`、`python3`、`unzip`。
 
-- `hybrid-http-client`：默认选项，解析质量更稳，但本机会运行一部分 pipeline 组件，建议 16GB 内存以上。
-- `vlm-http-client`：更适合弱性能机器，本机负担更低，更多依赖在线视觉模型能力。
-
-安装 MinerU 依赖：
+检查运行时依赖：
 
 ```bash
 collector skills install-deps modality-pdf-parse
 ```
 
-配置远程 OpenAI-compatible 视觉模型：
+配置 MinerU API Token（在 <https://mineru.net/user-center/api-token> 获取）：
 
 ```bash
-export MINERU_VL_BASE_URL="https://api.openai.com/v1"
-export MINERU_VL_API_KEY="<api-key>"
-export MINERU_VL_MODEL_NAME="<vision-model-id>"
+export MINERU_API_TOKEN="<your-mineru-token>"      # 必填，以 sk- 开头
+export MINERU_MODEL_VERSION="vlm"                  # 可选，vlm（默认）或 pipeline
+export MINERU_LANGUAGE="ch"                       # 可选，文档语言
+export MINERU_ENABLE_OCR="false"                  # 可选，扫描件设为 true
+export MINERU_PAGE_RANGES=""                       # 可选，如 "1-10,15"
 ```
 
-如果要在弱机器上优先使用远程 VLM：
-
-```bash
-export COLLECTOR_PDF_MINERU_BACKEND="vlm-http-client"
-```
-
-如果使用默认 `hybrid-http-client` 且希望降低本地批量压力：
-
-```bash
-export MINERU_HYBRID_BATCH_RATIO="1"
-```
-
-这些变量可以在 `collector init` 或 `collector skills configure modality-pdf-parse` 中配置，会写入 `~/.collector/config.yaml`。缺少 `MINERU_VL_BASE_URL`、`MINERU_VL_API_KEY` 或 `MINERU_VL_MODEL_NAME` 时，PDF Skill 会停止解析并在输出中说明需要如何配置。
+这些变量可以在 `collector init` 或 `collector skills configure modality-pdf-parse` 中配置，会写入 `~/.collector/config.yaml`。缺少 `MINERU_API_TOKEN` 时，PDF Skill 会停止解析并在输出中说明需要如何配置。
 
 ## 运行
 
@@ -202,11 +189,13 @@ curl -fsSL https://raw.githubusercontent.com/ah-Quei/collector/main/scripts/unin
 | `COLLECTOR_SKILLS_DIR` | Skills 目录 |
 | `COLLECTOR_SKILLS_STRATEGY` | Skill 冲突策略：`incoming`、`keep`、`overwrite`、`backup` |
 | `COLLECTOR_INSTALL_EXTERNAL_TOOLS` | 设为 `0` 可跳过 `opencli` / `lark-cli` 检查 |
-| `MINERU_VL_BASE_URL` | PDF 解析 Skill 使用的 OpenAI-compatible 视觉模型 API 地址 |
-| `MINERU_VL_API_KEY` | PDF 解析 Skill 使用的视觉模型 API Key |
-| `MINERU_VL_MODEL_NAME` | PDF 解析 Skill 使用的视觉模型 ID |
-| `COLLECTOR_PDF_MINERU_BACKEND` | PDF 解析后端：`hybrid-http-client` 或 `vlm-http-client`，默认 `hybrid-http-client` |
-| `MINERU_HYBRID_BATCH_RATIO` | 可选，降低 `hybrid-http-client` 本地 pipeline 批量压力 |
+| `MINERU_API_TOKEN` | PDF 解析 Skill 使用的 MinerU 官网 API Token（必填，在 <https://mineru.net/user-center/api-token> 获取） |
+| `MINERU_API_BASE_URL` | PDF 解析 Skill 使用的 MinerU API 地址，默认 `https://mineru.net/api/v4` |
+| `MINERU_MODEL_VERSION` | PDF 解析模型：`vlm`（默认）或 `pipeline` |
+| `MINERU_LANGUAGE` | PDF 解析文档语言，默认 `ch` |
+| `MINERU_ENABLE_OCR` | 扫描件 OCR 开关，默认 `false` |
+| `MINERU_PAGE_RANGES` | 可选，指定解析页码范围，如 `1-10,15` |
+| `MINERU_EXTRACT_TIMEOUT` | 可选，远程解析轮询超时秒数，默认 `1800` |
 
 ## 开发
 
